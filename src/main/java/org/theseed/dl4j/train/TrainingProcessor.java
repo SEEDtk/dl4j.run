@@ -89,6 +89,8 @@ import org.theseed.dl4j.TabbedTrainingSetReader;
  * -z	gradient normalization strategy; the default is "none"
  *
  * --raw	if specified, the data is not normalized
+ * --l2		if nonzero, then l2 regularization is used instead of gaussian dropout; the
+ * 			value should be the regularization parameter; the default is 0
  *
  * @author Bruce Parrello
  *
@@ -146,6 +148,10 @@ public class TrainingProcessor {
     @Option(name="-g", aliases={"--gaussRate"}, metaVar="0.5",
             usage="Gaussian dropout rate")
     private double gaussRate;
+
+    /** l2 regularization option */
+    @Option(name="--l2", metaVar="0.2", usage="l2 regularization parameter (replaces gaussian dropout if nonzero)")
+    private double l2Parm;
 
     /** maximum number of batches to read, or -1 to read them all */
     @Option(name="-x", aliases={"--maxBatches"}, metaVar="6",
@@ -225,6 +231,7 @@ public class TrainingProcessor {
         this.seed = (int) (System.currentTimeMillis() & 0xFFFFF);
         this.layers = 1;
         this.trainingFile = null;
+        this.l2Parm = 0;
         this.activationType = Activation.RELU;
         this.gradNorm = GradientNormalization.None;
         // Parse the command line.
@@ -310,12 +317,18 @@ public class TrainingProcessor {
             // Add the hidden layers.
             for (int i = 1; i <= this.layers; i++) {
                 log.info("Layer {} width is {}.", i, outWidth);
-                GaussianDropout dropOut = new GaussianDropout(this.gaussRate);
                 int inWidth = outWidth;
                 outWidth = inWidth - this.layerSlope;
-                configuration.layer(i,
-                        new DenseLayer.Builder().nIn(inWidth).nOut(outWidth)
-                                .dropOut(dropOut).build());
+                DenseLayer.Builder builder = new DenseLayer.Builder().gainInit(inWidth).nOut(outWidth);
+                // Do the regularization.
+                if (this.l2Parm > 0) {
+                    builder.l2(this.l2Parm);
+                } else {
+                    GaussianDropout dropOut = new GaussianDropout(this.gaussRate);
+                    builder.dropOut(dropOut);
+                }
+                // Build and add the layer.
+                configuration.layer(i, builder.build());
             }
             // Add the output layer.
             int outputCount = this.labels.size();
@@ -352,21 +365,32 @@ public class TrainingProcessor {
             ModelSerializer.writeModel(model, saveFile, true, normalizer);
             INDArray output = model.output(this.testingSet.getFeatures());
             // Display the configuration.
+            String regularization;
+            double regFactor;
+            if (this.l2Parm > 0) {
+                regularization = "L2";
+                regFactor = this.l2Parm;
+            } else {
+                regularization = "Gauss dropout";
+                regFactor = this.gaussRate;
+            }
             String parms = String.format("%n=========================== Parameters ===========================%n" +
                     "     iterations  = %12d, batch size    = %12d%n" +
                     "     test size   = %12d, layer width   = %12d%n" +
-                    "     gauss rate  = %12g, bias rate     = %12g%n" +
+                    "     learn rate  = %12e, bias rate     = %12g%n" +
                     "     seed number = %12d, hidden layers = %12d%n" +
-                    "     layer slope = %12d, learn rate    = %12e%n" +
+                    "     layer slope = %12d%n" +
                     "     --------------------------------------------------------%n" +
+                    "     Regularization method is %s with factor %g.%n" +
                     "     Gradient normalization strategy is %s.%n" +
                     "     Hidden layer activation type is %s.%n" +
                     "     Output layer activation type is %s.%n" +
                     "     Output layer loss function is %s.%n" +
                     "     %d total batches run with %d score bounces.",
-                   this.iterations, this.batchSize, this.testSize, this.layerWidth, this.gaussRate,
-                   this.biasRate, this.seed, this.layers, this.layerSlope, this.learnRate,
-                   this.gradNorm.name(), this.activationType.name(), outActivation.name(),
+                   this.iterations, this.batchSize, this.testSize, this.layerWidth,
+                   this.learnRate, this.biasRate, this.seed, this.layers, this.layerSlope,
+                   regularization, regFactor, this.gradNorm.name(),
+                   this.activationType.name(), outActivation.name(),
                    this.lossFunction.name(), batchCount, bounceCount);
             if (this.rawMode)
                parms += String.format("%nNormalization is turned off.");

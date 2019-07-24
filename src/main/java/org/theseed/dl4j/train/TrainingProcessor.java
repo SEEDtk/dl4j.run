@@ -18,7 +18,7 @@ import org.deeplearning4j.nn.conf.dropout.GaussianDropout;
 import org.deeplearning4j.nn.conf.dropout.IDropout;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
-import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
+//import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.util.ModelSerializer;
@@ -212,7 +212,7 @@ public class TrainingProcessor {
     private GradientNormalization gradNorm;
 
     /** convolution mode */
-    @Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size")
+//	@Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size")
     private int convolution;
 
     /** model directory */
@@ -333,8 +333,9 @@ public class TrainingProcessor {
                         .nIn(this.reader.width()).nOut(outWidth)
                         .build());
             } else {
-            	configuration.layer(new ConvolutionLayer.Builder().nIn(this.reader.width())
-            			.nOut(outWidth).kernelSize(3, 1).build());
+            	throw new IllegalArgumentException("Convolution not working yet.");
+//            	configuration.layer(new ConvolutionLayer.Builder().nIn(this.reader.width())
+//            			.nOut(outWidth).kernelSize(3, 1).build());
             }
             // Add the hidden layers.
             for (int i = 1; i <= this.layers; i++) {

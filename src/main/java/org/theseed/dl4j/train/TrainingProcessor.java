@@ -13,9 +13,12 @@ import java.util.Scanner;
 
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
+import org.deeplearning4j.nn.conf.dropout.Dropout;
 import org.deeplearning4j.nn.conf.dropout.GaussianDropout;
+import org.deeplearning4j.nn.conf.dropout.IDropout;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
+import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.util.ModelSerializer;
@@ -91,6 +94,10 @@ import org.theseed.dl4j.TabbedTrainingSetReader;
  * --raw	if specified, the data is not normalized
  * --l2		if nonzero, then l2 regularization is used instead of gaussian dropout; the
  * 			value should be the regularization parameter; the default is 0
+ * --drop	if specified, then regular dropout is used instead of gaussian dropout
+ * --cnn	if specified, then the input layer will be a one-dimensional convolution
+ * 			layer with the specified kernel width; otherwise, it will be a standard
+ * 			dense layer
  *
  * @author Bruce Parrello
  *
@@ -149,6 +156,10 @@ public class TrainingProcessor {
             usage="Gaussian dropout rate")
     private double gaussRate;
 
+    /** TRUE for linear dropout mode */
+    @Option(name="--drop", usage="normal (non-gaussian) dropout mode")
+    private boolean normalDrop;
+
     /** l2 regularization option */
     @Option(name="--l2", metaVar="0.2", usage="l2 regularization parameter (replaces gaussian dropout if nonzero)")
     private double l2Parm;
@@ -200,6 +211,10 @@ public class TrainingProcessor {
             usage="gradient normalization strategy")
     private GradientNormalization gradNorm;
 
+    /** convolution mode */
+    @Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size")
+    private int convolution;
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -234,6 +249,8 @@ public class TrainingProcessor {
         this.l2Parm = 0;
         this.activationType = Activation.RELU;
         this.gradNorm = GradientNormalization.None;
+        this.normalDrop = false;
+        this.convolution = 0;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -310,25 +327,35 @@ public class TrainingProcessor {
                     .weightInit(WeightInit.XAVIER)
                     .biasUpdater(new Sgd(this.biasRate))
                     .updater(new Adam(this.learnRate))
-                    .gradientNormalization(this.gradNorm)
-                    .list().layer(0, new DenseLayer.Builder().activation(Activation.TANH)
-                            .nIn(this.reader.width()).nOut(outWidth)
-                            .build());
+                    .gradientNormalization(this.gradNorm).list();
+            if (this.convolution == 0) {
+                configuration.layer(new DenseLayer.Builder().activation(Activation.TANH)
+                        .nIn(this.reader.width()).nOut(outWidth)
+                        .build());
+            } else {
+            	configuration.layer(new ConvolutionLayer.Builder().nIn(this.reader.width())
+            			.nOut(outWidth).kernelSize(3, 1).build());
+            }
             // Add the hidden layers.
             for (int i = 1; i <= this.layers; i++) {
                 log.info("Layer {} width is {}.", i, outWidth);
                 int inWidth = outWidth;
                 outWidth = inWidth - this.layerSlope;
-                DenseLayer.Builder builder = new DenseLayer.Builder().gainInit(inWidth).nOut(outWidth);
+                DenseLayer.Builder builder = new DenseLayer.Builder().nIn(inWidth).nOut(outWidth);
                 // Do the regularization.
                 if (this.l2Parm > 0) {
                     builder.l2(this.l2Parm);
                 } else {
-                    GaussianDropout dropOut = new GaussianDropout(this.gaussRate);
+                	IDropout dropOut;
+                	if (this.normalDrop) {
+                		dropOut = new Dropout(this.gaussRate);
+                	} else {
+                		dropOut = new GaussianDropout(this.gaussRate);
+                	}
                     builder.dropOut(dropOut);
                 }
                 // Build and add the layer.
-                configuration.layer(i, builder.build());
+                configuration.layer(builder.build());
             }
             // Add the output layer.
             int outputCount = this.labels.size();
@@ -371,7 +398,7 @@ public class TrainingProcessor {
                 regularization = "L2";
                 regFactor = this.l2Parm;
             } else {
-                regularization = "Gauss dropout";
+                regularization = (this.normalDrop ? "Linear dropout" : "Gauss dropout");
                 regFactor = this.gaussRate;
             }
             String parms = String.format("%n=========================== Parameters ===========================%n" +
@@ -379,7 +406,7 @@ public class TrainingProcessor {
                     "     test size   = %12d, layer width   = %12d%n" +
                     "     learn rate  = %12e, bias rate     = %12g%n" +
                     "     seed number = %12d, hidden layers = %12d%n" +
-                    "     layer slope = %12d%n" +
+                    "     layer slope = %12d, convolution   = %12d%n" +
                     "     --------------------------------------------------------%n" +
                     "     Regularization method is %s with factor %g.%n" +
                     "     Gradient normalization strategy is %s.%n" +
@@ -389,7 +416,7 @@ public class TrainingProcessor {
                     "     %d total batches run with %d score bounces.",
                    this.iterations, this.batchSize, this.testSize, this.layerWidth,
                    this.learnRate, this.biasRate, this.seed, this.layers, this.layerSlope,
-                   regularization, regFactor, this.gradNorm.name(),
+                   this.convolution, regularization, regFactor, this.gradNorm.name(),
                    this.activationType.name(), outActivation.name(),
                    this.lossFunction.name(), batchCount, bounceCount);
             if (this.rawMode)

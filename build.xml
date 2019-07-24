@@ -10,7 +10,7 @@
     <target name="create_run_jar">
         <jar destfile="${dir.jarfile}/dl4j.run.jar" filesetmanifest="mergewithoutmain">
             <manifest>
-                <attribute name="Main-Class" value="org.theseed.dl4j.train.App"/>
+                <attribute name="Main-Class" value="org.theseed.dl4j.App"/>
                 <attribute name="Class-Path" value="."/>
             </manifest>
             <fileset dir="${dir.buildfile}/target/classes"/>

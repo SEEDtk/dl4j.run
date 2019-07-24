@@ -37,7 +37,9 @@ import org.nd4j.linalg.learning.config.Sgd;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.dl4j.TabbedTrainingSetReader;
+import org.theseed.dl4j.App;
+import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.utils.ICommand;
 
 
 /**
@@ -102,11 +104,11 @@ import org.theseed.dl4j.TabbedTrainingSetReader;
  * @author Bruce Parrello
  *
  */
-public class TrainingProcessor {
+public class TrainingProcessor implements ICommand {
 
     // FIELDS
     /** input file reader */
-    private TabbedTrainingSetReader reader;
+    private TabbedDataSetReader reader;
     /** array of labels */
     ArrayList<String> labels;
     /** testing set */
@@ -279,12 +281,12 @@ public class TrainingProcessor {
                             if (! this.trainingFile.exists())
                                 throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
                         }
-                        this.reader = new TabbedTrainingSetReader(this.trainingFile, this.labelCol, this.labels);
+                        this.reader = new TabbedDataSetReader(this.trainingFile, this.labelCol, this.labels);
                         // Now that we know the number of labels, we can default the layer width.
                         // We set it to the midpoint between the inputs and the outputs (rounded up),
                         // with a minimum of 3 ( since 2 crashes the engine).
                         if (this.layerWidth == 0) {
-                            this.layerWidth = (this.labels.size() + this.reader.width() + 1) / 2;
+                            this.layerWidth = (this.labels.size() + this.reader.getWidth() + 1) / 2;
                             if (this.layerWidth == 2) this.layerWidth = 3;
                         }
                     }
@@ -330,10 +332,10 @@ public class TrainingProcessor {
                     .gradientNormalization(this.gradNorm).list();
             if (this.convolution == 0) {
                 configuration.layer(new DenseLayer.Builder().activation(Activation.TANH)
-                        .nIn(this.reader.width()).nOut(outWidth)
+                        .nIn(this.reader.getWidth()).nOut(outWidth)
                         .build());
             } else {
-            	throw new IllegalArgumentException("Convolution not working yet.");
+                throw new IllegalArgumentException("Convolution not working yet.");
 //            	configuration.layer(new ConvolutionLayer.Builder().nIn(this.reader.width())
 //            			.nOut(outWidth).kernelSize(3, 1).build());
             }
@@ -347,12 +349,12 @@ public class TrainingProcessor {
                 if (this.l2Parm > 0) {
                     builder.l2(this.l2Parm);
                 } else {
-                	IDropout dropOut;
-                	if (this.normalDrop) {
-                		dropOut = new Dropout(this.gaussRate);
-                	} else {
-                		dropOut = new GaussianDropout(this.gaussRate);
-                	}
+                    IDropout dropOut;
+                    if (this.normalDrop) {
+                        dropOut = new Dropout(this.gaussRate);
+                    } else {
+                        dropOut = new GaussianDropout(this.gaussRate);
+                    }
                     builder.dropOut(dropOut);
                 }
                 // Build and add the layer.

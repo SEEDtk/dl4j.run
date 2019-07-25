@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
+import org.theseed.dl4j.predict.PredictionProcessor;
 import org.theseed.dl4j.train.TrainingProcessor;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
@@ -50,7 +51,8 @@ public class App
             runObject = new TrainingProcessor();
             break;
         case "predict" :
-            throw new IllegalArgumentException("Predict mode not yet impelemented.");
+            runObject = new PredictionProcessor();
+            break;
         default :
             throw new IllegalArgumentException("Invalid command code " + command[0] + ".");
         }

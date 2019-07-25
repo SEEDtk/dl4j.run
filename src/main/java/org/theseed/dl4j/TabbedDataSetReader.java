@@ -4,6 +4,7 @@
 package org.theseed.dl4j;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Scanner;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.cpu.nativecpu.NDArray;
@@ -305,4 +307,23 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
     public int getMetaWidth() {
         return this.metaWidth;
     }
+
+
+    /**
+     * @return the list of labels read from the specified label file
+     *
+     * @param labelFile		file containing the labels
+     *
+     * @throws FileNotFoundException
+     */
+    public static List<String> readLabels(File labelFile) throws FileNotFoundException {
+        Scanner labelsIn = new Scanner(labelFile);
+        List<String> retVal = new ArrayList<String>();
+        while (labelsIn.hasNext()) {
+            retVal.add(labelsIn.nextLine());
+        }
+        labelsIn.close();
+        return retVal;
+    }
+
 }

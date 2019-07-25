@@ -8,9 +8,9 @@ import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.Scanner;
-
+import java.util.Arrays;
+import java.util.List;
+import org.apache.commons.lang3.StringUtils;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.dropout.Dropout;
@@ -37,7 +37,6 @@ import org.nd4j.linalg.learning.config.Sgd;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.dl4j.App;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.utils.ICommand;
 
@@ -93,6 +92,8 @@ import org.theseed.utils.ICommand;
  * -r	learning rate; this should be between 1e-1 and 1e-6; the default is 1e-3
  * -z	gradient normalization strategy; the default is "none"
  *
+ * --meta	a comma-delimited list of the metadata columns; these columns are ignored during training; the
+ * 			default is none
  * --raw	if specified, the data is not normalized
  * --l2		if nonzero, then l2 regularization is used instead of gaussian dropout; the
  * 			value should be the regularization parameter; the default is 0
@@ -110,12 +111,12 @@ public class TrainingProcessor implements ICommand {
     /** input file reader */
     private TabbedDataSetReader reader;
     /** array of labels */
-    ArrayList<String> labels;
+    List<String> labels;
     /** testing set */
     DataSet testingSet;
 
     /** logging facility */
-    private static Logger log = LoggerFactory.getLogger(App.class);
+    private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
 
     // COMMAND LINE
 
@@ -128,12 +129,12 @@ public class TrainingProcessor implements ICommand {
             usage="input column containing class")
     private String labelCol;
 
-    /** name or index of the label column */
+    /** number of iterations to run for each input batch */
     @Option(name="-n", aliases={"--iter"}, metaVar="1000",
             usage="number of iterations per batch")
     private int iterations;
 
-    /** size ofeach input batch */
+    /** size of each input batch */
     @Option(name="-b", aliases={"--batchSize"}, metaVar="1000",
             usage="size of each input batch")
     private int batchSize;
@@ -217,6 +218,10 @@ public class TrainingProcessor implements ICommand {
 //	@Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size")
     private int convolution;
 
+    /** comma-delimited list of metadata column names */
+    @Option(name="--meta", metaVar="name,date", usage="comma-delimited list of metadata columns")
+    private String metaCols;
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -253,6 +258,7 @@ public class TrainingProcessor implements ICommand {
         this.gradNorm = GradientNormalization.None;
         this.normalDrop = false;
         this.convolution = 0;
+        this.metaCols = "";
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -264,24 +270,22 @@ public class TrainingProcessor implements ICommand {
                 if (! this.modelDir.isDirectory()) {
                     throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 } else {
+                    // Read in the labels from the label file.
                     File labelFile = new File(this.modelDir, "labels.txt");
                     if (! labelFile.exists()) {
                         throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
                     } else {
-                        Scanner labelsIn = new Scanner(labelFile);
-                        this.labels = new ArrayList<String>();
-                        while (labelsIn.hasNext()) {
-                            this.labels.add(labelsIn.nextLine());
-                        }
-                        labelsIn.close();
+                        this.labels = TabbedDataSetReader.readLabels(labelFile);
                         log.info("{} labels read from label file.", this.labels.size());
-                        // Finally, we initialize the input to get the label column handled.
+                        // Parse the metadata column list.
+                        List<String> metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
+                        // Finally, we initialize the input to get the label and metadata columns handled.
                         if (this.trainingFile == null) {
                             this.trainingFile = new File(this.modelDir, "training.tbl");
                             if (! this.trainingFile.exists())
                                 throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
                         }
-                        this.reader = new TabbedDataSetReader(this.trainingFile, this.labelCol, this.labels);
+                        this.reader = new TabbedDataSetReader(this.trainingFile, this.labelCol, this.labels, metaList);
                         // Now that we know the number of labels, we can default the layer width.
                         // We set it to the midpoint between the inputs and the outputs (rounded up),
                         // with a minimum of 3 ( since 2 crashes the engine).

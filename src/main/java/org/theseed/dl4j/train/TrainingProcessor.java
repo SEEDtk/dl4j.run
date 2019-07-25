@@ -377,11 +377,12 @@ public class TrainingProcessor implements ICommand {
             MultiLayerNetwork model = new MultiLayerNetwork(configuration.build());
             model.init();
             // Now  we begin running the model.
+            boolean errorStop = false;
             int batchCount = 0;
             int bounceCount = 0;
             double oldScore = Double.MAX_VALUE;
             this.reader.setBatchSize(this.batchSize);
-            while (reader.hasNext() && batchCount < this.maxBatches) {
+            while (reader.hasNext() && batchCount < this.maxBatches && ! errorStop) {
                 batchCount++;
                 log.info("Reading data batch {}.", batchCount);
                 DataSet trainingData = reader.next();
@@ -391,12 +392,18 @@ public class TrainingProcessor implements ICommand {
                 double newScore = model.score();
                 if (oldScore < newScore) bounceCount++;
                 oldScore = newScore;
-                log.info("Score at end of batch {} is {}.", batchCount, model.score());
+                log.info("Score at end of batch {} is {}.", batchCount, newScore);
+                if (! Double.isFinite(newScore)) {
+                	log.error("Overflow/Underflow in gradient processing.  Model abandoned.");
+                	errorStop = true;
+                }
             }
             // Here we save the model.
-            File saveFile = new File(this.modelDir, "model.ser");
-            log.info("Saving model to {}.", saveFile);
-            ModelSerializer.writeModel(model, saveFile, true, normalizer);
+            if (! errorStop) {
+            	File saveFile = new File(this.modelDir, "model.ser");
+            	log.info("Saving model to {}.", saveFile);
+            	ModelSerializer.writeModel(model, saveFile, true, normalizer);
+            }
             INDArray output = model.output(this.testingSet.getFeatures());
             // Display the configuration.
             String regularization;
@@ -427,13 +434,18 @@ public class TrainingProcessor implements ICommand {
                    this.activationType.name(), outActivation.name(),
                    this.lossFunction.name(), batchCount, bounceCount);
             if (this.rawMode)
-               parms += String.format("%nNormalization is turned off.");
+                parms += String.format("%nNormalization is turned off.");
             log.info(parms);
-            //evaluate the model on the test set: compare the output to the actual
-            Evaluation eval = new Evaluation(this.labels);
-            eval.eval(this.testingSet.getLabels(), output);
-            // Output the evaluation.
-            String statDisplay = eval.stats();
+            String statDisplay;
+            if (errorStop) {
+            	statDisplay = "MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.";
+            } else {
+	            //evaluate the model on the test set: compare the output to the actual
+	            Evaluation eval = new Evaluation(this.labels);
+	            eval.eval(this.testingSet.getLabels(), output);
+	            // Output the evaluation.
+	            statDisplay = eval.stats();
+            }
             log.info(statDisplay);
             // Open the trials log in append mode and write the information about this run.
             File trials = new File(modelDir, "trials.log");

@@ -25,7 +25,6 @@ public class App
 {
     public static void main( String[] args )
     {
-        ICommand runObject = null;
         // Parse the command and get the command-line arguments.
         String[] command = StringUtils.split(args[0], '=');
         // Get the rest of the arguments.
@@ -43,23 +42,47 @@ public class App
             } catch (IOException e) {
                 throw new UncheckedIOException("Error reading parameter file", e);
             }
-        } else {
         }
         // Compute the appropriate command object.
+        ICommand runObject = null;
         switch (command[0]) {
         case "train" :
             runObject = new TrainingProcessor();
+            execute(runObject, args);
             break;
         case "predict" :
             runObject = new PredictionProcessor();
+            execute(runObject, args);
+            break;
+        case "--help" :
+        case "-h" :
+        case "help" :
+            args = new String[] { "--help" };
+            System.err.println("Command code \"train\":");
+            runObject = new TrainingProcessor();
+            execute(runObject, args);
+            System.err.println();
+            System.err.println("Command code \"predict\":");
+            runObject = new PredictionProcessor();
+            execute(runObject, args);
             break;
         default :
             throw new IllegalArgumentException("Invalid command code " + command[0] + ".");
         }
+    }
+
+    /**
+     * Execute a command processor.
+     *
+     * @param runObject		command processor to execute
+     * @param args			command-line parameters
+     */
+    public static void execute(ICommand runObject, String[] args) {
         // Execute the command.
         boolean ok = runObject.parseCommand(args);
         if (ok) {
             runObject.run();
         }
     }
+
 }

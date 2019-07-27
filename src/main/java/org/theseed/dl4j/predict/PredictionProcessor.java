@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
@@ -21,6 +22,7 @@ import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.dl4j.ChannelDataSetReader;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.utils.ICommand;
 
@@ -31,6 +33,14 @@ import org.theseed.utils.ICommand;
  * The first positional parameter is the name of the model directory.  This contains a "model.ser" file with
  * the model and normalizer in it as well as a "labels.txt" file that contains the classification labels, in
  * order.
+ *
+ * If the model directory also contains a "channels.tbl" file, then the input will be processed in
+ * channel mode.  The aforementioned file must be tab-delimited with headers.  The first column of
+ * each record should be a string, and the remaining columns should be a vector of floating-point
+ * numbers.  In this case, the input is considered to be two-dimensional.  Each input string is
+ * replaced by the corresponding vector.  The result can be used as a kind of one-hot representation
+ * of the various strings, but it can be more complicated.  For example, if the input is DNA nucleotides,
+ * an ambiguity code would contain fractional numbers in multiple positions of the vector.
  *
  * The predictions will appear on the standard output, but unless the logback.xml file is altered, the standard
  * error output will contain trace messages.  Therefore, redirection is required on the command line.
@@ -127,10 +137,17 @@ public class PredictionProcessor implements ICommand {
                         this.model = ModelSerializer.restoreMultiLayerNetwork(modelFile, false);
                         DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(modelFile);
                         // Open the reader.
-                        if (this.inputFile == null) {
-                            this.reader = new TabbedDataSetReader(System.in, this.metaList);
+                        // Determine the input type and get the appropriate reader.
+                        File channelFile = new File(this.modelDir, "channels.tbl");
+                        if (! channelFile.exists()) {
+                            log.info("Normal input.");
+                            // Normal situation.  Read scalar values.
+                            this.reader = new TabbedDataSetReader(this.inputFile, metaList);
                         } else {
-                            this.reader = new TabbedDataSetReader(this.inputFile, this.metaList);
+                            log.info("Channel input.");
+                            // Here we have channel input.
+                            HashMap<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+                            this.reader = new ChannelDataSetReader(this.inputFile, metaList, channelMap);
                         }
                         this.reader.setNormalizer(normalizer);
                         // Write the output headers.

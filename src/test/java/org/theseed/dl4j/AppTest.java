@@ -11,10 +11,24 @@ import static org.hamcrest.Matchers.*;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 
+import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
+import org.deeplearning4j.nn.conf.inputs.InputType;
+import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
+import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.OutputLayer;
+import org.deeplearning4j.nn.conf.layers.SubsamplingLayer;
+import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
+import org.deeplearning4j.nn.weights.WeightInit;
+import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
+import org.nd4j.linalg.learning.config.Adam;
+import org.nd4j.linalg.learning.config.Sgd;
+import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
 
 /**
  * Unit test for simple App.
@@ -37,6 +51,11 @@ public class AppTest extends TestCase
     public static Test suite()
     {
         return new TestSuite( AppTest.class );
+    }
+
+    // Convert double[] to List<Double>
+    public List<Double> collect(double[] parm) {
+        return Arrays.stream(parm).boxed().collect(Collectors.toList());
     }
 
     /**
@@ -116,5 +135,61 @@ public class AppTest extends TestCase
         assertThat("Wrong label for ex2.", metaData.get(1), equalTo("2.1\t5.1"));
     }
 
+    /**
+     * Test the channel dataset reader.
+     * @throws IOException
+     */
+    public void testChannelReader() throws IOException {
+        File channelFile = new File("src/test", "channels.tbl");
+        HashMap<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+        assertThat(collect(channelMap.get("a")), contains(1.0, 0.0, 0.0, 0.0));
+        assertThat(collect(channelMap.get("X")), contains(0.25, 0.25, 0.25, 0.25));
+        assertThat(collect(channelMap.get("y")), contains(0.0, 0.5, 0.0, 0.5));
+        List<String> labels = TabbedDataSetReader.readLabels(new File("src/test", "labels.tbl"));
+        ChannelDataSetReader reader = new ChannelDataSetReader(new File("src/test", "training.tbl"),
+                "protein", labels, channelMap);
+        assertThat(reader.getChannels(), equalTo(4));
+        DataSet set1 = reader.next();
+        INDArray features = set1.getFeatures();
+        INDArray outputs = set1.getLabels();
+        assertThat(set1.numExamples(), equalTo(8));
+        assertThat(features.getDouble(0, 0, 0, 0), equalTo(0.0));  // c in example 1 position 1
+        assertThat(features.getDouble(0, 1, 0, 0), equalTo(1.0));
+        assertThat(features.getDouble(0, 2, 0, 0), equalTo(0.0));
+        assertThat(features.getDouble(0, 3, 0, 0), equalTo(0.0));
+        assertThat(features.getDouble(0, 0, 0, 1), equalTo(0.0));	// g in example 1 position 2
+        assertThat(features.getDouble(0, 1, 0, 1), equalTo(0.0));
+        assertThat(features.getDouble(0, 2, 0, 1), equalTo(1.0));
+        assertThat(features.getDouble(0, 3, 0, 1), equalTo(0.0));
+        assertThat(features.getDouble(1, 0, 0, 0), equalTo(0.0));	// t in example 2 position 1
+        assertThat(features.getDouble(1, 1, 0, 0), equalTo(0.0));
+        assertThat(features.getDouble(1, 2, 0, 0), equalTo(0.0));
+        assertThat(features.getDouble(1, 3, 0, 0), equalTo(1.0));
+        assertThat(features.getDouble(1, 0, 0, 2), equalTo(1.0));	// a in example 2 position 3
+        assertThat(features.getDouble(1, 1, 0, 2), equalTo(0.0));
+        assertThat(features.getDouble(1, 2, 0, 2), equalTo(0.0));
+        assertThat(features.getDouble(1, 3, 0, 2), equalTo(0.0));
+        assertThat(outputs.getDouble(1, 0), equalTo(1.0));	// protein in example 2 is '*'
+        assertThat(outputs.getDouble(0, 15), equalTo(1.0)); // protein in example 1 is 'R'
+        // Insure we have created something that fits a convolution layer.
+        NeuralNetConfiguration.ListBuilder configuration = new NeuralNetConfiguration.Builder()
+                .seed(167842)
+                .activation(Activation.TANH)
+                .weightInit(WeightInit.XAVIER)
+                .biasUpdater(new Sgd(0.2))
+                .updater(new Adam(1e-3)).list()
+                .setInputType(InputType.convolutional(1, 5, 4))  // height = 1, width = cols, depth = channels
+                .layer(new ConvolutionLayer.Builder()
+                        .nIn(4).nOut(3).kernelSize(1, 2).build()) // out is number of filters to try, in is number of channels
+                .layer(new SubsamplingLayer.Builder().kernelSize(1, 2).stride(1, 2).build())
+                .layer(new DenseLayer.Builder().nIn(6).nOut(4).build())  // input = convOut * (width - conv + 1) / subsample
+                .layer(new OutputLayer.Builder(LossFunction.MCXENT)
+                        .activation(Activation.SOFTMAX)
+                        .nIn(4).nOut(21).build());
+        MultiLayerNetwork model = new MultiLayerNetwork(configuration.build());
+        model.init();
+        model.fit(set1); // Here is where we crash if we are wrong.
+        System.out.println("Success.");
+    }
 
 }

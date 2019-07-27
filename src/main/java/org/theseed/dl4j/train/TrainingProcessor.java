@@ -9,6 +9,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.deeplearning4j.nn.conf.GradientNormalization;
@@ -16,9 +17,12 @@ import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.dropout.Dropout;
 import org.deeplearning4j.nn.conf.dropout.GaussianDropout;
 import org.deeplearning4j.nn.conf.dropout.IDropout;
+import org.deeplearning4j.nn.conf.inputs.InputType;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
-//import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
+import org.deeplearning4j.nn.conf.layers.SubsamplingLayer;
+import org.deeplearning4j.nn.conf.preprocessor.CnnToFeedForwardPreProcessor;
+import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.util.ModelSerializer;
@@ -37,6 +41,7 @@ import org.nd4j.linalg.learning.config.Sgd;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.dl4j.ChannelDataSetReader;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.utils.ICommand;
 
@@ -58,6 +63,13 @@ import org.theseed.utils.ICommand;
  * 		label column defaults to the last one, but this can be changed.  The file must have
  * 		headers.
  *
+ * If the model directory also contains a "channels.tbl" file, then the input will be processed in
+ * channel mode.  The aforementioned file must be tab-delimited with headers.  The first column of
+ * each record should be a string, and the remaining columns should be a vector of floating-point
+ * numbers.  In this case, the input is considered to be two-dimensional.  Each input string is
+ * replaced by the corresponding vector.  The result can be used as a kind of one-hot representation
+ * of the various strings, but it can be more complicated.  For example, if the input is DNA nucleotides,
+ * an ambiguity code would contain fractional numbers in multiple positions of the vector.
  *
  * The standard output will contain evaluations and logs.  A snapshot of the input parameters and the
  * evaluation results will be appended to the file "trials.log".
@@ -92,15 +104,23 @@ import org.theseed.utils.ICommand;
  * -r	learning rate; this should be between 1e-1 and 1e-6; the default is 1e-3
  * -z	gradient normalization strategy; the default is "none"
  *
- * --meta	a comma-delimited list of the metadata columns; these columns are ignored during training; the
- * 			default is none
- * --raw	if specified, the data is not normalized
- * --l2		if nonzero, then l2 regularization is used instead of gaussian dropout; the
- * 			value should be the regularization parameter; the default is 0
- * --drop	if specified, then regular dropout is used instead of gaussian dropout
- * --cnn	if specified, then the input layer will be a one-dimensional convolution
- * 			layer with the specified kernel width; otherwise, it will be a standard
- * 			dense layer
+ * --meta		a comma-delimited list of the metadata columns; these columns are ignored during training; the
+ * 				default is none
+ * --raw		if specified, the data is not normalized
+ * --l2			if nonzero, then l2 regularization is used instead of gaussian dropout; the
+ * 				value should be the regularization parameter; the default is 0
+ * --drop		if specified, then regular dropout is used instead of gaussian dropout
+ * --cnn		if specified, then the input layer will be a convolution layer with the
+ * 				specified kernel width; otherwise, it will be a standard dense layer
+ * --init		activation type for the input layer; the default is "tanh"
+ *
+ * For a convolution input layer, the following additional parameters are used.
+ *
+ * --sub		indicates a subsampling layer will be used with the indicated kernel/stride size to
+ * 				reduce the output from the convolution layer; the default is 1, meaning no subsampling
+ * --filters	specifies the number of filters to use during convolution; each filter represents a pass
+ * 				over the input with different trial parameters; the output size is multiplied by the
+ * 				number of filters
  *
  * @author Bruce Parrello
  *
@@ -114,6 +134,10 @@ public class TrainingProcessor implements ICommand {
     List<String> labels;
     /** testing set */
     DataSet testingSet;
+    /** number of input channels */
+    int channelCount;
+    /** TRUE if we have channel input */
+    boolean channelMode;
 
     /** logging facility */
     private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
@@ -159,9 +183,9 @@ public class TrainingProcessor implements ICommand {
             usage="Gaussian dropout rate")
     private double gaussRate;
 
-    /** TRUE for linear dropout mode */
+    /** linear dropout rate; if not zero, overrides gaussian dropout */
     @Option(name="--drop", usage="normal (non-gaussian) dropout mode")
-    private boolean normalDrop;
+    private double normalDrop;
 
     /** l2 regularization option */
     @Option(name="--l2", metaVar="0.2", usage="l2 regularization parameter (replaces gaussian dropout if nonzero)")
@@ -199,6 +223,10 @@ public class TrainingProcessor implements ICommand {
     @Option(name="-a", aliases= {"--activation"}, usage="activation function for hidden layers")
     private Activation activationType;
 
+    /** initial activation function */
+    @Option(name="--init", usage="activation function for input layer")
+    private Activation initActivationType;
+
     /** input training set */
     @Option(name="-i", aliases={"--input"}, metaVar="training.tbl",
             usage="input training set file")
@@ -215,8 +243,16 @@ public class TrainingProcessor implements ICommand {
     private GradientNormalization gradNorm;
 
     /** convolution mode */
-//	@Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size")
+    @Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size")
     private int convolution;
+
+    /** subsampling layer */
+    @Option(name="--sub", metaVar="2", usage="kernel/stride of subsampling layer (if any)")
+    private int subFactor;
+
+    /** convolution output */
+    @Option(name="--filters", metaVar="3", usage="number of trial filters to use for convolution")
+    private int convOut;
 
     /** comma-delimited list of metadata column names */
     @Option(name="--meta", metaVar="name,date", usage="comma-delimited list of metadata columns")
@@ -226,7 +262,6 @@ public class TrainingProcessor implements ICommand {
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
-    /**
 
     /**
      * Parse command-line options to specify the parameters of this object.
@@ -255,10 +290,15 @@ public class TrainingProcessor implements ICommand {
         this.trainingFile = null;
         this.l2Parm = 0;
         this.activationType = Activation.RELU;
+        this.initActivationType = Activation.TANH;
         this.gradNorm = GradientNormalization.None;
-        this.normalDrop = false;
+        this.normalDrop = 0.0;
         this.convolution = 0;
+        this.channelMode = false;
+        this.subFactor = 1;
+        this.convOut = 1;
         this.metaCols = "";
+        this.channelCount = 1;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -285,13 +325,29 @@ public class TrainingProcessor implements ICommand {
                             if (! this.trainingFile.exists())
                                 throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
                         }
-                        this.reader = new TabbedDataSetReader(this.trainingFile, this.labelCol, this.labels, metaList);
+                        // Determine the input type and get the appropriate reader.
+                        File channelFile = new File(this.modelDir, "channels.tbl");
+                        this.channelMode = channelFile.exists();
+                        if (! this.channelMode) {
+                            log.info("Normal input.");
+                            // Normal situation.  Read scalar values.
+                            this.reader = new TabbedDataSetReader(this.trainingFile, this.labelCol, this.labels, metaList);
+                        } else {
+                            // Here we have channel input.
+                            HashMap<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+                            ChannelDataSetReader myReader = new ChannelDataSetReader(this.trainingFile, this.labelCol,
+                                    this.labels, metaList, channelMap);
+                            this.channelCount = myReader.getChannels();
+                            this.reader = myReader;
+                            log.info("Channel input with {} channels.", this.channelCount);
+                        }
+
                         // Now that we know the number of labels, we can default the layer width.
                         // We set it to the midpoint between the inputs and the outputs (rounded up),
                         // with a minimum of 3 ( since 2 crashes the engine).
                         if (this.layerWidth == 0) {
                             this.layerWidth = (this.labels.size() + this.reader.getWidth() + 1) / 2;
-                            if (this.layerWidth == 2) this.layerWidth = 3;
+                            if (this.layerWidth <= 2) this.layerWidth = 3;
                         }
                     }
                 }
@@ -314,6 +370,9 @@ public class TrainingProcessor implements ICommand {
             log.info("Reading testing set (size = {}).", this.testSize);
             this.reader.setBatchSize(this.testSize);
             this.testingSet = this.reader.next();
+            if (! this.reader.hasNext())
+                log.warn("Training set contains only test data. Batch size = {} but {} records in input.",
+                        this.testSize, this.testingSet.numExamples());
             DataNormalization normalizer = null;
             if (! this.rawMode) {
                 // Here the model must be normalized.
@@ -324,9 +383,10 @@ public class TrainingProcessor implements ICommand {
                 reader.setNormalizer(normalizer);
             }
             // Now we build the model configuration.
-            log.info("Building model configuration with hidden layer width {} and depth {}.",
-                    this.layerWidth, this.layers);
+            int inWidth = this.reader.getWidth();
             int outWidth = this.layerWidth + (this.layers - 1) * this.layerSlope;
+            log.info("Building model configuration with and depth {} and input width {}.",
+                    this.layers, inWidth);
             NeuralNetConfiguration.ListBuilder configuration = new NeuralNetConfiguration.Builder()
                     .seed(this.seed)
                     .activation(activationType)
@@ -334,19 +394,47 @@ public class TrainingProcessor implements ICommand {
                     .biasUpdater(new Sgd(this.biasRate))
                     .updater(new Adam(this.learnRate))
                     .gradientNormalization(this.gradNorm).list();
-            if (this.convolution == 0) {
-                configuration.layer(new DenseLayer.Builder().activation(Activation.TANH)
-                        .nIn(this.reader.getWidth()).nOut(outWidth)
-                        .build());
-            } else {
-                throw new IllegalArgumentException("Convolution not working yet.");
-//            	configuration.layer(new ConvolutionLayer.Builder().nIn(this.reader.width())
-//            			.nOut(outWidth).kernelSize(3, 1).build());
+            // Compute the input type.
+            CnnToFeedForwardPreProcessor reshaper = null;
+            InputType inputShape = InputType.feedForward(inWidth * this.channelCount);
+            if (this.channelMode) {
+                inputShape = InputType.convolutional(1, inWidth, this.channelCount);
+            } else if (this.convolution > 0) {
+                inputShape = InputType.convolutionalFlat(1, inWidth, 1);
             }
+            configuration.setInputType(inputShape);
+            // This variable will track the number of hidden layers we need.
+            // We subtract one for every extra input layer.
+            int needed = this.layers;
+            if (this.convolution > 0) {
+                log.info("Creating convolution layer.");
+                configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
+                        .nIn(this.channelCount).nOut(this.convOut).kernelSize(1, this.convolution).build());
+                inWidth = (inWidth - this.convolution + 1) * this.convOut;
+                needed--;
+                if (subFactor > 1) {
+                    log.info("Creating subsampling layer.");
+                    configuration.layer(new SubsamplingLayer.Builder()
+                            .kernelSize(1, this.subFactor)
+                            .stride(1, this.subFactor).build());
+                    // Reduce the input size by the subsampling factor, rounding down.
+                    inWidth /= this.subFactor;
+                    needed--;
+                }
+            } else if (this.channelMode) {
+                // Not convolution, but we need to multiply the input width by the
+                // number of channels and set up a flattener.
+                reshaper = new CnnToFeedForwardPreProcessor(1, inWidth, this.channelCount);
+                inWidth *= this.channelCount;
+            }
+            log.info("Creating feed-forward layer with width {}.", inWidth);
+            configuration.layer(new DenseLayer.Builder().activation(this.initActivationType)
+                    .nIn(inWidth).nOut(outWidth)
+                    .build());
             // Add the hidden layers.
-            for (int i = 1; i <= this.layers; i++) {
-                log.info("Layer {} width is {}.", i, outWidth);
-                int inWidth = outWidth;
+            for (int i = 1; i <= needed; i++) {
+                log.info("Hidden layer {} width is {}.", i, outWidth);
+                inWidth = outWidth;
                 outWidth = inWidth - this.layerSlope;
                 DenseLayer.Builder builder = new DenseLayer.Builder().nIn(inWidth).nOut(outWidth);
                 // Do the regularization.
@@ -354,8 +442,8 @@ public class TrainingProcessor implements ICommand {
                     builder.l2(this.l2Parm);
                 } else {
                     IDropout dropOut;
-                    if (this.normalDrop) {
-                        dropOut = new Dropout(this.gaussRate);
+                    if (this.normalDrop > 0) {
+                        dropOut = new Dropout(this.normalDrop);
                     } else {
                         dropOut = new GaussianDropout(this.gaussRate);
                     }
@@ -368,10 +456,13 @@ public class TrainingProcessor implements ICommand {
             int outputCount = this.labels.size();
             Activation outActivation = (this.lossFunction == LossFunctions.LossFunction.XENT ?
                     Activation.SIGMOID : Activation.SOFTMAX);
-            configuration.layer(this.layers + 1,
-                    new OutputLayer.Builder(this.lossFunction)
+            log.info("Creating output layer.");
+            configuration.layer(new OutputLayer.Builder(this.lossFunction)
                             .activation(outActivation)
                             .nIn(outWidth).nOut(outputCount).build());
+            // Add the preprocessor if we need one.
+            if (reshaper != null)
+                configuration.inputPreProcessor(0, reshaper);
             // Here we create the model itself.
             log.info("Creating model.");
             MultiLayerNetwork model = new MultiLayerNetwork(configuration.build());
@@ -394,15 +485,15 @@ public class TrainingProcessor implements ICommand {
                 oldScore = newScore;
                 log.info("Score at end of batch {} is {}.", batchCount, newScore);
                 if (! Double.isFinite(newScore)) {
-                	log.error("Overflow/Underflow in gradient processing.  Model abandoned.");
-                	errorStop = true;
+                    log.error("Overflow/Underflow in gradient processing.  Model abandoned.");
+                    errorStop = true;
                 }
             }
             // Here we save the model.
             if (! errorStop) {
-            	File saveFile = new File(this.modelDir, "model.ser");
-            	log.info("Saving model to {}.", saveFile);
-            	ModelSerializer.writeModel(model, saveFile, true, normalizer);
+                File saveFile = new File(this.modelDir, "model.ser");
+                log.info("Saving model to {}.", saveFile);
+                ModelSerializer.writeModel(model, saveFile, true, normalizer);
             }
             INDArray output = model.output(this.testingSet.getFeatures());
             // Display the configuration.
@@ -411,8 +502,11 @@ public class TrainingProcessor implements ICommand {
             if (this.l2Parm > 0) {
                 regularization = "L2";
                 regFactor = this.l2Parm;
+            } else if (this.normalDrop > 0) {
+                regularization = "Linear dropout";
+                regFactor = this.normalDrop;
             } else {
-                regularization = (this.normalDrop ? "Linear dropout" : "Gauss dropout");
+                regularization = "Gauss dropout";
                 regFactor = this.gaussRate;
             }
             String parms = String.format("%n=========================== Parameters ===========================%n" +
@@ -421,31 +515,39 @@ public class TrainingProcessor implements ICommand {
                     "     learn rate  = %12e, bias rate     = %12g%n" +
                     "     seed number = %12d, hidden layers = %12d%n" +
                     "     layer slope = %12d, convolution   = %12d%n" +
+                    "     subsampling = %12d, conv. filters - %12d%n" +
                     "     --------------------------------------------------------%n" +
                     "     Regularization method is %s with factor %g.%n" +
                     "     Gradient normalization strategy is %s.%n" +
+                    "     Input layer activation type is %s.%n" +
                     "     Hidden layer activation type is %s.%n" +
                     "     Output layer activation type is %s.%n" +
                     "     Output layer loss function is %s.%n" +
                     "     %d total batches run with %d score bounces.",
                    this.iterations, this.batchSize, this.testSize, this.layerWidth,
                    this.learnRate, this.biasRate, this.seed, this.layers, this.layerSlope,
-                   this.convolution, regularization, regFactor, this.gradNorm.name(),
-                   this.activationType.name(), outActivation.name(),
-                   this.lossFunction.name(), batchCount, bounceCount);
+                   this.convolution, this.subFactor, this.convOut,
+                   regularization, regFactor, this.gradNorm.name(),
+                   this.initActivationType.name(), this.activationType.name(),
+                   outActivation.name(), this.lossFunction.name(),
+                   batchCount, bounceCount);
             if (this.rawMode)
                 parms += String.format("%nNormalization is turned off.");
+            if (this.channelMode)
+                parms += String.format("%nInput uses channel vectors.");
             log.info(parms);
             String statDisplay;
             if (errorStop) {
-            	statDisplay = "MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.";
+                statDisplay = "MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.";
             } else {
-	            //evaluate the model on the test set: compare the output to the actual
-	            Evaluation eval = new Evaluation(this.labels);
-	            eval.eval(this.testingSet.getLabels(), output);
-	            // Output the evaluation.
-	            statDisplay = eval.stats();
+                //evaluate the model on the test set: compare the output to the actual
+                Evaluation eval = new Evaluation(this.labels);
+                eval.eval(this.testingSet.getLabels(), output);
+                // Output the evaluation.
+                statDisplay = eval.stats();
             }
+            // Add the summary.
+            statDisplay += model.summary(inputShape);
             log.info(statDisplay);
             // Open the trials log in append mode and write the information about this run.
             File trials = new File(modelDir, "trials.log");

@@ -349,6 +349,14 @@ public class TrainingProcessor implements ICommand {
                             this.layerWidth = (this.labels.size() + this.reader.getWidth() + 1) / 2;
                             if (this.layerWidth <= 2) this.layerWidth = 3;
                         }
+                        // Finally, verify that the subfactor is in range.
+                        if (this.convolution > 0 && this.subFactor > 1) {
+                            int subChannels = this.reader.getWidth() - this.convolution + 1;
+                            if (subChannels <= this.subFactor) {
+                                throw new IllegalArgumentException("Subsampling factor must be less than " +
+                                        subChannels + " in this configuration.");
+                            }
+                        }
                     }
                 }
                 // We made it this far, we can run the application.
@@ -385,7 +393,7 @@ public class TrainingProcessor implements ICommand {
             // Now we build the model configuration.
             int inWidth = this.reader.getWidth();
             int outWidth = this.layerWidth + (this.layers - 1) * this.layerSlope;
-            log.info("Building model configuration with and depth {} and input width {}.",
+            log.info("Building model configuration with depth {} and input width {}.",
                     this.layers, inWidth);
             NeuralNetConfiguration.ListBuilder configuration = new NeuralNetConfiguration.Builder()
                     .seed(this.seed)
@@ -407,27 +415,32 @@ public class TrainingProcessor implements ICommand {
             // We subtract one for every extra input layer.
             int needed = this.layers;
             if (this.convolution > 0) {
-                log.info("Creating convolution layer.");
+                log.info("Creating convolution layer with {} inputs.", inWidth);
                 configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
                         .nIn(this.channelCount).nOut(this.convOut).kernelSize(1, this.convolution).build());
-                inWidth = (inWidth - this.convolution + 1) * this.convOut;
+                // There is one output column for each examined kernel.  Each column has
+                // one value per filter in its vector.
+                inWidth = (inWidth - this.convolution + 1);
                 needed--;
                 if (subFactor > 1) {
-                    log.info("Creating subsampling layer.");
+                    log.info("Creating subsampling layer with {} inputs.", inWidth);
                     configuration.layer(new SubsamplingLayer.Builder()
                             .kernelSize(1, this.subFactor)
                             .stride(1, this.subFactor).build());
-                    // Reduce the input size by the subsampling factor, rounding down.
-                    inWidth /= this.subFactor;
+                    // Reduce the input size by the subsampling factor.
+                    inWidth = (inWidth - this.subFactor) / this.subFactor + 1;
                     needed--;
                 }
+                // Factor the filter count into the input width because it will be
+                // flattened for the dense layer.
+                inWidth *= this.convOut;
             } else if (this.channelMode) {
                 // Not convolution, but we need to multiply the input width by the
                 // number of channels and set up a flattener.
                 reshaper = new CnnToFeedForwardPreProcessor(1, inWidth, this.channelCount);
                 inWidth *= this.channelCount;
             }
-            log.info("Creating feed-forward layer with width {}.", inWidth);
+            log.info("Creating feed-forward layer with {} inputs.", inWidth);
             configuration.layer(new DenseLayer.Builder().activation(this.initActivationType)
                     .nIn(inWidth).nOut(outWidth)
                     .build());
@@ -532,19 +545,21 @@ public class TrainingProcessor implements ICommand {
                    outActivation.name(), this.lossFunction.name(),
                    batchCount, bounceCount);
             if (this.rawMode)
-                parms += String.format("%nNormalization is turned off.");
+                parms += String.format("%n     Normalization is turned off.");
             if (this.channelMode)
-                parms += String.format("%nInput uses channel vectors.");
+                parms += String.format("%n     Input uses channel vectors.");
             log.info(parms);
             String statDisplay;
             if (errorStop) {
-                statDisplay = "MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.";
+                statDisplay = String.format("%n%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
             } else {
                 //evaluate the model on the test set: compare the output to the actual
                 Evaluation eval = new Evaluation(this.labels);
                 eval.eval(this.testingSet.getLabels(), output);
-                // Output the evaluation.
-                statDisplay = eval.stats();
+                // Output the evaluation.  Note we are more aggressive about allowing the confusion matrix than
+                // the default process is.
+                boolean showConfusion = (this.labels.size() < 50);
+                statDisplay = eval.stats(false, showConfusion);
             }
             // Add the summary.
             statDisplay += model.summary(inputShape);

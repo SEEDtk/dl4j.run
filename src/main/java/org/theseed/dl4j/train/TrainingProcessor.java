@@ -10,7 +10,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.apache.commons.lang3.StringUtils;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
@@ -39,6 +44,7 @@ import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
 import org.nd4j.linalg.learning.config.Adam;
 import org.nd4j.linalg.learning.config.Sgd;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.ChannelDataSetReader;
@@ -82,8 +88,9 @@ import org.theseed.utils.ICommand;
  * -b	size of each batch; the default is 500
  * -t	size of the testing set, which is the first batch read and is used to compute
  * 		normalization; the default is 2000
- * -w	the width of each layer; the default is the mean of the number of feature sensors
- * 		and the number of classes
+ * -w	the width of each hidden layer; this is a comma-delimited list with one number per
+ * 		layer, in order; if no hidden layers are specified, a default hidden layer whose
+ * 		width is the mean of the input and output widths will be created
  * -g	Gaussian dropout rate used to prevent overfitting-- a higher value makes the model
  * 		less sensitive and a lower one makes it more sensitive; the default is 0.3
  * -u	bias updater coefficient, used to determine the starting speed of the model-- a
@@ -99,8 +106,6 @@ import org.theseed.utils.ICommand;
  * -i	name of the training set file; the default is "training.tbl" in the model directory
  * -a	activation function for hidden layers; this should be the name of one of the
  * 		Activation class enum values; the default is "relu"
- * -m	slope of the hidden layer width; the last hidden layer has the layer width; each
- * 		layer above it has this many additional nodes; the default is 0
  * -r	learning rate; this should be between 1e-1 and 1e-6; the default is 1e-3
  * -z	gradient normalization strategy; the default is "none"
  *
@@ -121,6 +126,11 @@ import org.theseed.utils.ICommand;
  * --filters	specifies the number of filters to use during convolution; each filter represents a pass
  * 				over the input with different trial parameters; the output size is multiplied by the
  * 				number of filters
+ *
+ * The following are utility options
+ *
+ * --parms		name of a file to contain a dump of the current parameters
+ * --help		display the command-line options and parameters
  *
  * @author Bruce Parrello
  *
@@ -148,6 +158,10 @@ public class TrainingProcessor implements ICommand {
     @Option(name="-h", aliases={"--help"}, help=true)
     private boolean help;
 
+    /** parameter dump */
+    @Option(name="--parms", usage="write command-line parameters to a configuration file")
+    private File parmFile;
+
     /** name or index of the label column */
     @Option(name="-c", aliases={"--col"}, metaVar="0",
             usage="input column containing class")
@@ -169,14 +183,9 @@ public class TrainingProcessor implements ICommand {
     private int testSize;
 
     /** number of nodes in each middle layer */
-    @Option(name="-w", aliases={"--width"}, metaVar="7",
-            usage="width of each neural net layer")
-    private int layerWidth;
-
-    /** number of nodes to add going from output layer to input layer */
-    @Option(name="-m", aliases= {"--slope"}, metaVar="1",
-            usage="slope of the layer width going from output to input")
-    private int layerSlope;
+    @Option(name="-w", aliases={"--widths"}, metaVar="7",
+            usage="width of each hidden layer")
+    private String layerWidths;
 
     /** dropout rate to prevent overfitting */
     @Option(name="-g", aliases={"--gaussRate"}, metaVar="0.5",
@@ -204,11 +213,6 @@ public class TrainingProcessor implements ICommand {
     /** initialization seed */
     @Option(name="-s", aliases={"--seed"}, metaVar="12765", usage="random number seed")
     private int seed;
-
-    /** number of hidden layers */
-    @Option(name="-d", aliases={"--layers", "--depth"}, metaVar="1",
-            usage="number of hidden layers (depth)")
-    private int layers;
 
     /** loss function */
     @Option(name="-l", aliases={"--lossFun", "--loss"}, metaVar="mse",
@@ -258,6 +262,8 @@ public class TrainingProcessor implements ICommand {
     @Option(name="--meta", metaVar="name,date", usage="comma-delimited list of metadata columns")
     private String metaCols;
 
+    /**
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -278,15 +284,13 @@ public class TrainingProcessor implements ICommand {
         this.iterations = 1000;
         this.batchSize = 500;
         this.testSize = 2000;
-        this.layerWidth = 0;
-        this.layerSlope = 0;
+        this.layerWidths = "";
         this.gaussRate = 0.3;
         this.biasRate = 0.2;
         this.learnRate = 1e-3;
         this.maxBatches = Integer.MAX_VALUE;
         this.lossFunction = LossFunctions.LossFunction.MCXENT;
         this.seed = (int) (System.currentTimeMillis() & 0xFFFFF);
-        this.layers = 1;
         this.trainingFile = null;
         this.l2Parm = 0;
         this.activationType = Activation.RELU;
@@ -299,6 +303,7 @@ public class TrainingProcessor implements ICommand {
         this.convOut = 1;
         this.metaCols = "";
         this.channelCount = 1;
+        this.parmFile = null;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -342,13 +347,6 @@ public class TrainingProcessor implements ICommand {
                             log.info("Channel input with {} channels.", this.channelCount);
                         }
 
-                        // Now that we know the number of labels, we can default the layer width.
-                        // We set it to the midpoint between the inputs and the outputs (rounded up),
-                        // with a minimum of 3 ( since 2 crashes the engine).
-                        if (this.layerWidth == 0) {
-                            this.layerWidth = (this.labels.size() + this.reader.getWidth() + 1) / 2;
-                            if (this.layerWidth <= 2) this.layerWidth = 3;
-                        }
                         // Finally, verify that the subfactor is in range.
                         if (this.convolution > 0 && this.subFactor > 1) {
                             int subChannels = this.reader.getWidth() - this.convolution + 1;
@@ -359,6 +357,8 @@ public class TrainingProcessor implements ICommand {
                         }
                     }
                 }
+                // If the user asked for a configuration file, write it here.
+                if (this.parmFile != null) writeParms(this.parmFile);
                 // We made it this far, we can run the application.
                 retVal = true;
             }
@@ -370,6 +370,55 @@ public class TrainingProcessor implements ICommand {
             System.err.println(e.getMessage());
         }
         return retVal;
+    }
+
+    /** Write all the parameters to a configuration file.
+     *
+     * @param outFile	file to be created for future use as a configuration file
+     *
+     * @throws IOException */
+    private void writeParms(File outFile) throws IOException {
+        String commentFlag = "";
+        PrintWriter writer = new PrintWriter(outFile);
+        writer.format("--col %s\t\t# input column for class name%n", this.labelCol);
+        writer.format("--iter %d\t\t# number of training iterations per batch%n", this.iterations);
+        writer.format("--batchSize %d\t\t# size of each training batch%n", this.batchSize);
+        writer.format("--testSize %d\t\t# size of the testing set, taken from the beginning of the file%n", this.testSize);
+        if (this.layerWidths.isEmpty())
+            writer.format("# --widths %d\t\t# configure number and widths of hidden layers%n", this.reader.getWidth());
+        else
+            writer.format("--widths %s\t\t# configure hidden layers%n", this.layerWidths);
+        commentFlag = ((this.normalDrop > 0 || this.l2Parm > 0) ? "#" : "");
+        writer.format("%s--gaussRate %g\t\t# gaussian dropout rate%n", commentFlag, this.gaussRate);
+        commentFlag = ((this.l2Parm > 0) ? "# " : "");
+        writer.format("%s--drop %g\t\t# linear dropout rate (overrides gaussian)%n", commentFlag, this.normalDrop);
+        commentFlag = ((this.l2Parm == 0) ? "# " : "");
+        writer.format("%s--l2 %g\t\t# L2 regularization factor (overrides dropouts)%n", commentFlag, this.l2Parm);
+        if (this.maxBatches == Integer.MAX_VALUE)
+            writer.println("# --maxBatches 10\t\t# limit the number of input batches");
+        else
+            writer.format("--maxBatches %d\t\t# maximum number of input batches to process%n", this.maxBatches);
+        writer.format("--learnRate %e\t\t# learning rate%n", this.learnRate);
+        writer.format("--updateRate %g\t\t# bias updater coefficient%n", this.biasRate);
+        writer.format("--seed %d\t\t# random number initialization seed%n", this.seed);
+        String functions = Stream.of(LossFunction.values()).map(LossFunction::name).collect(Collectors.joining(", "));
+        writer.format("## Valid loss functions are %s.%n", functions);
+        writer.format("--lossFun %s\t\t# loss function for scoring output%n", this.lossFunction);
+        functions = Stream.of(Activation.values()).map(Activation::name).collect(Collectors.joining(", "));
+        writer.format("## Valid activation functions are %s.%n", functions);
+        writer.format("--init %s\t\t# initial activation function%n", this.initActivationType.toString());
+        writer.format("--activation %s\t\t# hidden layer activation function%n", this.activationType.toString());
+        functions = Stream.of(GradientNormalization.values()).map(GradientNormalization::name).collect(Collectors.joining(", "));
+        writer.format("## Valid gradient normalizations are %s.%n", functions);
+        writer.format("--gradNorm %s\t\t# gradient normalization strategy%n", this.gradNorm.toString());
+        commentFlag = ((this.convolution > 0) ? "" : "# ");
+        writer.format("%s--cnn %d\t\t# convolution kernel size%n", commentFlag, this.convolution);
+        writer.format("%s--filters %d\t\t# number of convolution filters to try%n", commentFlag, this.convOut);
+        writer.format("%s--sub %d\t\t# subsampling factor%n", commentFlag, this.subFactor);
+        commentFlag = (this.rawMode ? "" : "# ");
+        writer.format("%s--raw\t\t# suppress input normalization%n", commentFlag);
+        writer.close();
+
     }
 
     public void run() {
@@ -392,9 +441,8 @@ public class TrainingProcessor implements ICommand {
             }
             // Now we build the model configuration.
             int inWidth = this.reader.getWidth();
-            int outWidth = this.layerWidth + (this.layers - 1) * this.layerSlope;
-            log.info("Building model configuration with depth {} and input width {}.",
-                    this.layers, inWidth);
+            log.info("Building model configuration with input width {} and {} channels.",
+                    inWidth, this.channelCount);
             NeuralNetConfiguration.ListBuilder configuration = new NeuralNetConfiguration.Builder()
                     .seed(this.seed)
                     .activation(activationType)
@@ -404,7 +452,7 @@ public class TrainingProcessor implements ICommand {
                     .gradientNormalization(this.gradNorm).list();
             // Compute the input type.
             CnnToFeedForwardPreProcessor reshaper = null;
-            InputType inputShape = InputType.feedForward(inWidth * this.channelCount);
+            InputType inputShape = InputType.feedForward(inWidth);
             if (this.channelMode) {
                 inputShape = InputType.convolutional(1, inWidth, this.channelCount);
             } else if (this.convolution > 0) {
@@ -413,7 +461,7 @@ public class TrainingProcessor implements ICommand {
             configuration.setInputType(inputShape);
             // This variable will track the number of hidden layers we need.
             // We subtract one for every extra input layer.
-            int needed = this.layers;
+            int layers = 0;
             if (this.convolution > 0) {
                 log.info("Creating convolution layer with {} inputs.", inWidth);
                 configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
@@ -421,7 +469,7 @@ public class TrainingProcessor implements ICommand {
                 // There is one output column for each examined kernel.  Each column has
                 // one value per filter in its vector.
                 inWidth = (inWidth - this.convolution + 1);
-                needed--;
+                layers++;
                 if (subFactor > 1) {
                     log.info("Creating subsampling layer with {} inputs.", inWidth);
                     configuration.layer(new SubsamplingLayer.Builder()
@@ -429,7 +477,7 @@ public class TrainingProcessor implements ICommand {
                             .stride(1, this.subFactor).build());
                     // Reduce the input size by the subsampling factor.
                     inWidth = (inWidth - this.subFactor) / this.subFactor + 1;
-                    needed--;
+                    layers++;
                 }
                 // Factor the filter count into the input width because it will be
                 // flattened for the dense layer.
@@ -440,15 +488,24 @@ public class TrainingProcessor implements ICommand {
                 reshaper = new CnnToFeedForwardPreProcessor(1, inWidth, this.channelCount);
                 inWidth *= this.channelCount;
             }
-            log.info("Creating feed-forward layer with {} inputs.", inWidth);
+            // Compute the default width for the hidden layer.
+            int outputCount = this.labels.size();
+            int outWidth = (inWidth + outputCount) / 2;
+            if (outWidth < 3) outWidth = 3;
+            Queue<Integer> hiddenLayers = new LinkedList<Integer>();
+            if (this.layerWidths.isEmpty() && layers == 0) this.layerWidths = String.valueOf(outWidth);
+            if (! this.layerWidths.isEmpty()) {
+                Arrays.stream(this.layerWidths.split(",")).mapToInt(Integer::parseInt)
+                         .forEachOrdered(hiddenLayers::add);
+            }
+            log.info("Creating feed-forward layer with width {}.", inWidth);
             configuration.layer(new DenseLayer.Builder().activation(this.initActivationType)
-                    .nIn(inWidth).nOut(outWidth)
+                    .nIn(inWidth).nOut(inWidth)
                     .build());
-            // Add the hidden layers.
-            for (int i = 1; i <= needed; i++) {
-                log.info("Hidden layer {} width is {}.", i, outWidth);
-                inWidth = outWidth;
-                outWidth = inWidth - this.layerSlope;
+            // Compute the hidden layers.
+            while (hiddenLayers.size() > 0) {
+                outWidth = hiddenLayers.remove();
+                log.info("Creating hidden layer with input width {} and {} outputs.", inWidth, outWidth);
                 DenseLayer.Builder builder = new DenseLayer.Builder().nIn(inWidth).nOut(outWidth);
                 // Do the regularization.
                 if (this.l2Parm > 0) {
@@ -464,15 +521,16 @@ public class TrainingProcessor implements ICommand {
                 }
                 // Build and add the layer.
                 configuration.layer(builder.build());
+                // Set up for the next one.
+                inWidth = outWidth;
             }
             // Add the output layer.
-            int outputCount = this.labels.size();
             Activation outActivation = (this.lossFunction == LossFunctions.LossFunction.XENT ?
                     Activation.SIGMOID : Activation.SOFTMAX);
-            log.info("Creating output layer.");
+            log.info("Creating output layer with input width {} and {} outputs.", inWidth, outputCount);
             configuration.layer(new OutputLayer.Builder(this.lossFunction)
                             .activation(outActivation)
-                            .nIn(outWidth).nOut(outputCount).build());
+                            .nIn(inWidth).nOut(outputCount).build());
             // Add the preprocessor if we need one.
             if (reshaper != null)
                 configuration.inputPreProcessor(0, reshaper);
@@ -524,11 +582,10 @@ public class TrainingProcessor implements ICommand {
             }
             String parms = String.format("%n=========================== Parameters ===========================%n" +
                     "     iterations  = %12d, batch size    = %12d%n" +
-                    "     test size   = %12d, layer width   = %12d%n" +
+                    "     test size   = %12d, seed number   = %12d%n" +
                     "     learn rate  = %12e, bias rate     = %12g%n" +
-                    "     seed number = %12d, hidden layers = %12d%n" +
-                    "     layer slope = %12d, convolution   = %12d%n" +
-                    "     subsampling = %12d, conv. filters - %12d%n" +
+                    "     convolution = %12d, conv. filters = %12d%n" +
+                    "     subsampling = %12d%n" +
                     "     --------------------------------------------------------%n" +
                     "     Regularization method is %s with factor %g.%n" +
                     "     Gradient normalization strategy is %s.%n" +
@@ -537,13 +594,16 @@ public class TrainingProcessor implements ICommand {
                     "     Output layer activation type is %s.%n" +
                     "     Output layer loss function is %s.%n" +
                     "     %d total batches run with %d score bounces.",
-                   this.iterations, this.batchSize, this.testSize, this.layerWidth,
-                   this.learnRate, this.biasRate, this.seed, this.layers, this.layerSlope,
-                   this.convolution, this.subFactor, this.convOut,
-                   regularization, regFactor, this.gradNorm.name(),
+                   this.iterations, this.batchSize, this.testSize, this.seed,
+                   this.learnRate, this.biasRate, this.convolution, this.convOut,
+                   this.subFactor, regularization, regFactor, this.gradNorm.name(),
                    this.initActivationType.name(), this.activationType.name(),
                    outActivation.name(), this.lossFunction.name(),
                    batchCount, bounceCount);
+            if (! this.layerWidths.isEmpty()) {
+                 String layerConfig = this.layerWidths.replaceAll(",", ", ");
+                 parms += String.format("%n     Layer configuration is %s", layerConfig);
+            }
             if (this.rawMode)
                 parms += String.format("%n     Normalization is turned off.");
             if (this.channelMode)

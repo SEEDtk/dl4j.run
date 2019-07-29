@@ -116,12 +116,16 @@ import org.theseed.utils.IntegerList;
  * --raw		if specified, the data is not normalized
  * --l2			if nonzero, then l2 regularization is used instead of gaussian dropout; the
  * 				value should be the regularization parameter; the default is 0
- * --drop		if specified, then regular dropout is used instead of gaussian dropout
+ * --drop		if nonzero, then regular dropout is used instead of gaussian dropout; the
+ * 				default is 0
  * --cnn		if specified, then the input layer will be a convolution layer with the
- * 				specified kernel width; otherwise, it will be a standard dense layer
- * --init		activation type for the input layer; the default is "tanh"
+ * 				specified kernel width; otherwise, it will be a standard dense layer;
+ * 				specifying multiple comma-delimited values creates multiple convolution
+ * 				layers
+ * --init		activation type for the input layer; the default is HARDTANH
  * --comment	a comment to display at the beginning of the trial log
- * --method		training strategy to use-- epoch (small datasets) or batch (large datasets)
+ * --method		training strategy to use-- epoch (small datasets) or batch (large datasets); the default
+ * 				is EPOCH
  *
  * For a convolution input layer, the following additional parameters are used.
  *
@@ -380,7 +384,7 @@ public class TrainingProcessor implements ICommand {
         this.trainingFile = null;
         this.l2Parm = 0;
         this.activationType = Activation.RELU;
-        this.initActivationType = Activation.TANH;
+        this.initActivationType = Activation.HARDTANH;
         this.gradNorm = GradientNormalization.None;
         this.normalDrop = 0.0;
         this.convolutions = new IntegerList();
@@ -390,7 +394,7 @@ public class TrainingProcessor implements ICommand {
         this.metaCols = "";
         this.channelCount = 1;
         this.parmFile = null;
-        this.method = Type.BATCH;
+        this.method = Type.EPOCH;
         this.comment = null;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
@@ -639,8 +643,7 @@ public class TrainingProcessor implements ICommand {
             Trainer myTrainer = Trainer.create(this.method, this, log);
             RunStats runStats = myTrainer.trainModel(model, this.reader);
             model = runStats.bestModel;
-            log.info("Total time to train in minutes is {}.",
-                    DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss"));
+            String minutes = DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss");
             // Here we save the model.
             if (! runStats.isErrorStop()) {
                 File saveFile = new File(this.modelDir, "model.ser");
@@ -679,13 +682,13 @@ public class TrainingProcessor implements ICommand {
                             "     Hidden layer activation type is %s.%n" +
                             "     Output layer activation type is %s.%n" +
                             "     Output layer loss function is %s.%n" +
-                            "     %d total %s run with %d score bounces.",
+                            "     %s minutes to run %d %s with %d score bounces.",
                            this.iterations, this.batchSize, this.testSize, this.seed,
                            this.learnRate, this.biasRate, this.subFactor, this.convOut,
                            this.method.toString(), regularization, regFactor, this.gradNorm.toString(),
                            this.initActivationType.toString(), this.activationType.toString(),
                            outActivation.toString(), this.lossFunction.toString(),
-                           runStats.getEventCount(), myTrainer.eventsName(),
+                           minutes, runStats.getEventCount(), myTrainer.eventsName(),
                            runStats.getBounceCount()));
             if (! this.convolutions.isEmpty())
                 parms.append(String.format("%n     Convolution layers used with kernel sizes %s.", this.convolutions));

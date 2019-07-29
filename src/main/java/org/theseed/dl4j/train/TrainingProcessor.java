@@ -10,13 +10,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Queue;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.nd4j.evaluation.classification.ConfusionMatrix;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
@@ -49,7 +48,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.ChannelDataSetReader;
 import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.dl4j.train.Trainer.Type;
 import org.theseed.utils.ICommand;
+import org.theseed.utils.IntegerList;
 
 
 /**
@@ -120,6 +121,7 @@ import org.theseed.utils.ICommand;
  * 				specified kernel width; otherwise, it will be a standard dense layer
  * --init		activation type for the input layer; the default is "tanh"
  * --comment	a comment to display at the beginning of the trial log
+ * --method		training strategy to use-- epoch (small datasets) or batch (large datasets)
  *
  * For a convolution input layer, the following additional parameters are used.
  *
@@ -150,6 +152,10 @@ public class TrainingProcessor implements ICommand {
     int channelCount;
     /** TRUE if we have channel input */
     boolean channelMode;
+    /** list of convolution widths */
+    IntegerList convolutions;
+    /** list of hidden layer widths */
+    IntegerList denseLayers;
 
     /** logging facility */
     private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
@@ -187,7 +193,9 @@ public class TrainingProcessor implements ICommand {
     /** number of nodes in each middle layer */
     @Option(name="-w", aliases={"--widths"}, metaVar="7",
             usage="width of each hidden layer")
-    private String layerWidths;
+    private void setLayers(String layerWidths) {
+        this.denseLayers = new IntegerList(layerWidths);
+    }
 
     /** dropout rate to prevent overfitting */
     @Option(name="-g", aliases={"--gaussRate"}, metaVar="0.5",
@@ -249,8 +257,10 @@ public class TrainingProcessor implements ICommand {
     private GradientNormalization gradNorm;
 
     /** convolution mode */
-    @Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size")
-    private int convolution;
+    @Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size of each layer")
+    private void setConvolution(String cnn) {
+        this.convolutions = new IntegerList(cnn);
+    }
 
     /** subsampling layer */
     @Option(name="--sub", metaVar="2", usage="kernel/stride of subsampling layer (if any)")
@@ -268,12 +278,82 @@ public class TrainingProcessor implements ICommand {
     @Option(name="--comment", metaVar="changed bias rate", usage="comment to display in trial log")
     private String comment;
 
-    /**
+    /** method to use for training */
+    @Option(name="--method", metaVar="epoch", usage="strategy for processing of training set")
+    private Trainer.Type method;
 
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
+    /**
+     * Class to describe a fitting run.
+     */
+    public static class RunStats {
+        private boolean errorStop;
+        private int bounceCount;
+        private int eventCount;
+        private MultiLayerNetwork bestModel;
+
+        public RunStats(MultiLayerNetwork model) {
+            this.errorStop = false;
+            this.bounceCount = 0;
+            this.eventCount = 0;
+            this.bestModel = model;
+        }
+
+        /** Record a score bounce. */
+        public void bounce() {
+            this.bounceCount++;
+        }
+
+        /** Record a batch. */
+        public void event() {
+            this.eventCount++;
+        }
+
+        /** Record an error. */
+        public void error() {
+            this.errorStop = true;
+        }
+
+        /**
+         * @return the error-stop flag
+         */
+        public boolean isErrorStop() {
+            return errorStop;
+        }
+
+        /**
+         * @return the number of score bounces
+         */
+        public int getBounceCount() {
+            return bounceCount;
+        }
+
+        /**
+         * @return the number of events processed
+         */
+        public int getEventCount() {
+            return eventCount;
+        }
+
+        /**
+         * @return the best model found
+         */
+        public MultiLayerNetwork getBestModel() {
+            return bestModel;
+        }
+
+        /**
+         * Store the new best model.
+         * @param bestModel 	the new best model
+         */
+        public void setBestModel(MultiLayerNetwork bestModel) {
+            this.bestModel = bestModel;
+        }
+
+    }
 
     /**
      * Parse command-line options to specify the parameters of this object.
@@ -290,7 +370,7 @@ public class TrainingProcessor implements ICommand {
         this.iterations = 1000;
         this.batchSize = 500;
         this.testSize = 2000;
-        this.layerWidths = "";
+        this.denseLayers = new IntegerList();
         this.gaussRate = 0.3;
         this.biasRate = 0.2;
         this.learnRate = 1e-3;
@@ -303,13 +383,14 @@ public class TrainingProcessor implements ICommand {
         this.initActivationType = Activation.TANH;
         this.gradNorm = GradientNormalization.None;
         this.normalDrop = 0.0;
-        this.convolution = 0;
+        this.convolutions = new IntegerList();
         this.channelMode = false;
         this.subFactor = 1;
         this.convOut = 1;
         this.metaCols = "";
         this.channelCount = 1;
         this.parmFile = null;
+        this.method = Type.BATCH;
         this.comment = null;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
@@ -354,14 +435,24 @@ public class TrainingProcessor implements ICommand {
                             log.info("Channel input with {} channels.", this.channelCount);
                         }
 
-                        // Finally, verify that the subfactor is in range.
-                        if (this.convolution > 0 && this.subFactor > 1) {
-                            int subChannels = this.reader.getWidth() - this.convolution + 1;
+                        // Verify that the subfactor is in range.
+                        int subChannels = this.reader.getWidth();
+                        if (! this.convolutions.isEmpty() && this.subFactor > 1) {
+                            // Compute the width after the last convolution.
+                            for (int cWidth : this.convolutions) {
+                                subChannels -= (cWidth - 1);
+                            }
                             if (subChannels <= this.subFactor) {
                                 throw new IllegalArgumentException("Subsampling factor must be less than " +
                                         subChannels + " in this configuration.");
                             }
+                            // Compute the number of inputs we expect to remain after the subsampling layer.
+                            subChannels = (subChannels - this.subFactor) / this.subFactor + 1;
                         }
+                        // Compute the default hidden layer width. Note the default is only set if the list
+                        // is currently empty.
+                        this.denseLayers.setDefault((subChannels + this.labels.size() + 1) / 2);
+
                     }
                 }
                 // If the user asked for a configuration file, write it here.
@@ -387,43 +478,46 @@ public class TrainingProcessor implements ICommand {
     private void writeParms(File outFile) throws IOException {
         String commentFlag = "";
         PrintWriter writer = new PrintWriter(outFile);
-        writer.format("--col %s\t\t# input column for class name%n", this.labelCol);
-        writer.format("--iter %d\t\t# number of training iterations per batch%n", this.iterations);
-        writer.format("--batchSize %d\t\t# size of each training batch%n", this.batchSize);
-        writer.format("--testSize %d\t\t# size of the testing set, taken from the beginning of the file%n", this.testSize);
-        if (this.layerWidths.isEmpty())
-            writer.format("# --widths %d\t\t# configure number and widths of hidden layers%n", this.reader.getWidth());
+        writer.format("--col %s\t# input column for class name%n", this.labelCol);
+        writer.format("--iter %d\t# number of training iterations per batch%n", this.iterations);
+        writer.format("--batchSize %d\t# size of each training batch%n", this.batchSize);
+        writer.format("--testSize %d\t# size of the testing set, taken from the beginning of the file%n", this.testSize);
+        String functions = Stream.of(Type.values()).map(Type::name).collect(Collectors.joining(", "));
+        writer.format("## Valid training methods are %s.%n", functions);
+        writer.format("--method %s\t# training set processing method%n", this.method.toString());
+        if (this.denseLayers.isEmpty())
+            writer.format("# --widths %d\t# configure number and widths of hidden layers%n", this.reader.getWidth());
         else
-            writer.format("--widths %s\t\t# configure hidden layers%n", this.layerWidths);
+            writer.format("--widths %s\t# configure hidden layers%n", this.denseLayers.original());
         commentFlag = ((this.normalDrop > 0 || this.l2Parm > 0) ? "#" : "");
-        writer.format("%s--gaussRate %g\t\t# gaussian dropout rate (0 to turn off dropout)%n", commentFlag, this.gaussRate);
+        writer.format("%s--gaussRate %g\t# gaussian dropout rate (0 to turn off dropout)%n", commentFlag, this.gaussRate);
         commentFlag = ((this.l2Parm > 0  || this.normalDrop == 0) ? "# " : "");
-        writer.format("%s--drop %g\t\t# linear dropout rate (overrides gaussian)%n", commentFlag, this.normalDrop);
+        writer.format("%s--drop %g\t# linear dropout rate (overrides gaussian)%n", commentFlag, this.normalDrop);
         commentFlag = ((this.l2Parm == 0) ? "# " : "");
-        writer.format("%s--l2 %g\t\t# L2 regularization factor (overrides dropouts)%n", commentFlag, this.l2Parm);
+        writer.format("%s--l2 %g\t# L2 regularization factor (overrides dropouts)%n", commentFlag, this.l2Parm);
         if (this.maxBatches == Integer.MAX_VALUE)
-            writer.println("# --maxBatches 10\t\t# limit the number of input batches");
+            writer.println("# --maxBatches 10\t# limit the number of input batches");
         else
-            writer.format("--maxBatches %d\t\t# maximum number of input batches to process%n", this.maxBatches);
-        writer.format("--learnRate %e\t\t# learning rate%n", this.learnRate);
-        writer.format("--updateRate %g\t\t# bias updater coefficient%n", this.biasRate);
-        writer.format("--seed %d\t\t# random number initialization seed%n", this.seed);
-        String functions = Stream.of(LossFunction.values()).map(LossFunction::name).collect(Collectors.joining(", "));
+            writer.format("--maxBatches %d\t# maximum number of input batches to process%n", this.maxBatches);
+        writer.format("--learnRate %e\t# learning rate%n", this.learnRate);
+        writer.format("--updateRate %g\t# bias updater coefficient%n", this.biasRate);
+        writer.format("--seed %d\t# random number initialization seed%n", this.seed);
+        functions = Stream.of(LossFunction.values()).map(LossFunction::name).collect(Collectors.joining(", "));
         writer.format("## Valid loss functions are %s.%n", functions);
-        writer.format("--lossFun %s\t\t# loss function for scoring output%n", this.lossFunction);
+        writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction);
         functions = Stream.of(Activation.values()).map(Activation::name).collect(Collectors.joining(", "));
         writer.format("## Valid activation functions are %s.%n", functions);
-        writer.format("--init %s\t\t# initial activation function%n", this.initActivationType.toString());
-        writer.format("--activation %s\t\t# hidden layer activation function%n", this.activationType.toString());
+        writer.format("--init %s\t# initial activation function%n", this.initActivationType.toString());
+        writer.format("--activation %s\t# hidden layer activation function%n", this.activationType.toString());
         functions = Stream.of(GradientNormalization.values()).map(GradientNormalization::name).collect(Collectors.joining(", "));
         writer.format("## Valid gradient normalizations are %s.%n", functions);
-        writer.format("--gradNorm %s\t\t# gradient normalization strategy%n", this.gradNorm.toString());
-        commentFlag = ((this.convolution > 0) ? "" : "# ");
-        writer.format("%s--cnn %d\t\t# convolution kernel size%n", commentFlag, this.convolution);
-        writer.format("%s--filters %d\t\t# number of convolution filters to try%n", commentFlag, this.convOut);
-        writer.format("%s--sub %d\t\t# subsampling factor%n", commentFlag, this.subFactor);
+        writer.format("--gradNorm %s\t# gradient normalization strategy%n", this.gradNorm.toString());
+        commentFlag = (this.convolutions.isEmpty() ? "# " : "");
+        writer.format("%s--cnn %d\t# convolution kernel sizes%n", commentFlag, this.convolutions);
+        writer.format("%s--filters %d\t# number of convolution filters to try%n", commentFlag, this.convOut);
+        writer.format("%s--sub %d\t# subsampling factor%n", commentFlag, this.subFactor);
         commentFlag = (this.rawMode ? "" : "# ");
-        writer.format("%s--raw\t\t# suppress input normalization%n", commentFlag);
+        writer.format("%s--raw\t# suppress input normalization%n", commentFlag);
         if (this.comment == null)
             writer.println("# --comment The comment appears in the trial log.");
         else
@@ -466,17 +560,20 @@ public class TrainingProcessor implements ICommand {
             InputType inputShape = InputType.feedForward(inWidth);
             if (this.channelMode) {
                 inputShape = InputType.convolutional(1, inWidth, this.channelCount);
-            } else if (this.convolution > 0) {
+            } else if (! this.convolutions.isEmpty()) {
                 inputShape = InputType.convolutionalFlat(1, inWidth, 1);
             }
             configuration.setInputType(inputShape);
-            if (this.convolution > 0) {
-                log.info("Creating convolution layer with {} inputs.", inWidth);
-                configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
-                        .nIn(this.channelCount).nOut(this.convOut).kernelSize(1, this.convolution).build());
-                // There is one output column for each examined kernel.  Each column has
-                // one value per filter in its vector.
-                inWidth = (inWidth - this.convolution + 1);
+            if (! this.convolutions.isEmpty()) {
+                // Create the convolution layers
+                for (int convKernel : this.convolutions) {
+                    log.info("Creating convolution layer with {} inputs.", inWidth);
+                    configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
+                            .nIn(this.channelCount).nOut(this.convOut).kernelSize(1, convKernel).build());
+                    // There is one output column for each examined kernel.  Each column has
+                    // one value per filter in its vector.
+                    inWidth = (inWidth - convKernel + 1);
+                }
                 if (subFactor > 1) {
                     log.info("Creating subsampling layer with {} inputs.", inWidth);
                     configuration.layer(new SubsamplingLayer.Builder()
@@ -503,15 +600,10 @@ public class TrainingProcessor implements ICommand {
             }
             // Compute the default width for the hidden layer.
             int outputCount = this.labels.size();
-            int outWidth = (inWidth + outputCount) / 2;
-            if (outWidth < 3) outWidth = 3;
-            Queue<Integer> hiddenLayers = new LinkedList<Integer>();
-            if (this.layerWidths.isEmpty()) this.layerWidths = String.valueOf(outWidth);
-            Arrays.stream(this.layerWidths.split(",")).mapToInt(Integer::parseInt)
-                     .forEachOrdered(hiddenLayers::add);
+            int outWidth;
             // Compute the hidden layers.
-            while (hiddenLayers.size() > 0) {
-                outWidth = hiddenLayers.remove();
+            for (int layerSize : this.denseLayers) {
+                outWidth = layerSize;
                 log.info("Creating hidden layer with input width {} and {} outputs.", inWidth, outWidth);
                 DenseLayer.Builder builder = new DenseLayer.Builder().nIn(inWidth).nOut(outWidth);
                 // Do the regularization.
@@ -541,33 +633,16 @@ public class TrainingProcessor implements ICommand {
             log.info("Creating model.");
             MultiLayerNetwork model = new MultiLayerNetwork(configuration.build());
             model.init();
-            // Now  we begin running the model.
-            boolean errorStop = false;
-            int batchCount = 0;
-            int bounceCount = 0;
-            double oldScore = Double.MAX_VALUE;
+            // Now  we train the model.
             this.reader.setBatchSize(this.batchSize);
-            while (reader.hasNext() && batchCount < this.maxBatches && ! errorStop) {
-                batchCount++;
-                long startTime = System.currentTimeMillis();
-                log.info("Reading data batch {}.", batchCount);
-                DataSet trainingData = reader.next();
-                for(int i=0; i < iterations; i++ ) {
-                    model.fit(trainingData);
-                }
-                double newScore = model.score();
-                if (oldScore < newScore) bounceCount++;
-                oldScore = newScore;
-                long duration = (System.currentTimeMillis() - startTime) / 1000;
-                log.info("Score at end of batch {} is {}. {} seconds for {} iterations.", batchCount,
-                        newScore, duration, this.iterations);
-                if (! Double.isFinite(newScore)) {
-                    log.error("Overflow/Underflow in gradient processing.  Model abandoned.");
-                    errorStop = true;
-                }
-            }
+            long start = System.currentTimeMillis();
+            Trainer myTrainer = Trainer.create(this.method, this, log);
+            RunStats runStats = myTrainer.trainModel(model, this.reader);
+            model = runStats.bestModel;
+            log.info("Total time to train in minutes is {}.",
+                    DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss"));
             // Here we save the model.
-            if (! errorStop) {
+            if (! runStats.isErrorStop()) {
                 File saveFile = new File(this.modelDir, "model.ser");
                 log.info("Saving model to {}.", saveFile);
                 ModelSerializer.writeModel(model, saveFile, true, normalizer);
@@ -595,31 +670,31 @@ public class TrainingProcessor implements ICommand {
                             "     iterations  = %12d, batch size    = %12d%n" +
                             "     test size   = %12d, seed number   = %12d%n" +
                             "     learn rate  = %12e, bias rate     = %12g%n" +
-                            "     convolution = %12d, conv. filters = %12d%n" +
-                            "     subsampling = %12d%n" +
+                            "     subsampling = %12d, conv. filters = %12d%n" +
                             "     --------------------------------------------------------%n" +
+                            "     Training set strategy is %s.%n" +
                             "     Regularization method is %s with factor %g.%n" +
                             "     Gradient normalization strategy is %s.%n" +
                             "     Input layer activation type is %s.%n" +
                             "     Hidden layer activation type is %s.%n" +
                             "     Output layer activation type is %s.%n" +
                             "     Output layer loss function is %s.%n" +
-                            "     %d total batches run with %d score bounces.",
+                            "     %d total %s run with %d score bounces.",
                            this.iterations, this.batchSize, this.testSize, this.seed,
-                           this.learnRate, this.biasRate, this.convolution, this.convOut,
-                           this.subFactor, regularization, regFactor, this.gradNorm.name(),
-                           this.initActivationType.name(), this.activationType.name(),
-                           outActivation.name(), this.lossFunction.name(),
-                           batchCount, bounceCount));
-            if (! this.layerWidths.isEmpty()) {
-                 String layerConfig = this.layerWidths.replaceAll(",", ", ");
-                 parms.append(String.format("%n     Layer configuration is %s", layerConfig));
-            }
+                           this.learnRate, this.biasRate, this.subFactor, this.convOut,
+                           this.method.toString(), regularization, regFactor, this.gradNorm.toString(),
+                           this.initActivationType.toString(), this.activationType.toString(),
+                           outActivation.toString(), this.lossFunction.toString(),
+                           runStats.getEventCount(), myTrainer.eventsName(),
+                           runStats.getBounceCount()));
+            if (! this.convolutions.isEmpty())
+                parms.append(String.format("%n     Convolution layers used with kernel sizes %s.", this.convolutions));
+            parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
             if (this.rawMode)
-                parms.append(String.format("%n     Normalization is turned off."));
+                parms.append(String.format("%n     Data normalization is turned off."));
             if (this.channelMode)
                 parms.append(String.format("%n     Input uses channel vectors."));
-            if (errorStop) {
+            if (runStats.isErrorStop()) {
                 parms.append(String.format("%n%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW."));
             } else {
                 //evaluate the model on the test set: compare the output to the actual
@@ -648,5 +723,26 @@ public class TrainingProcessor implements ICommand {
         } catch (IOException e) {
             log.error(e.getMessage());
         }
+    }
+
+    /**
+     * @return the recommended number of iterations
+     */
+    public int getIterations() {
+        return iterations;
+    }
+
+    /**
+     * @return the size of an example batch
+     */
+    public int getBatchSize() {
+        return batchSize;
+    }
+
+    /**
+     * @return the maximum number of batches to process
+     */
+    public int getMaxBatches() {
+        return maxBatches;
     }
 }

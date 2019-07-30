@@ -25,50 +25,60 @@ public class App
 {
     public static void main( String[] args )
     {
-        // Parse the command and get the command-line arguments.
-        String[] command = StringUtils.split(args[0], '=');
-        // Get the rest of the arguments.
-        args = Arrays.copyOfRange(args, 1, args.length);
-        // Read in the parm file if needed.
-        if (command.length == 2) {
-            try {
-                // Get the parameters.
-                List<String> buffer = Parms.fromFile(new File(command[1]));
-                // Add the residual.
-                buffer.addAll(Arrays.asList(args));
-                // Form them into an array.
-                args = new String[buffer.size()];
-                args = buffer.toArray(args);
-            } catch (IOException e) {
-                throw new UncheckedIOException("Error reading parameter file", e);
+        int exitCode = 0;
+        try {
+            // Parse the command and get the command-line arguments.
+            String[] command = StringUtils.split(args[0], '=');
+            // Get the rest of the arguments.
+            args = Arrays.copyOfRange(args, 1, args.length);
+            // Read in the parm file if needed.
+            if (command.length == 2) {
+                try {
+                    // Get the parameters.
+                    List<String> buffer = Parms.fromFile(new File(command[1]));
+                    // Add the residual.
+                    buffer.addAll(Arrays.asList(args));
+                    // Form them into an array.
+                    args = new String[buffer.size()];
+                    args = buffer.toArray(args);
+                } catch (IOException e) {
+                    throw new UncheckedIOException("Error reading parameter file", e);
+                }
             }
+            // Compute the appropriate command object.
+            ICommand runObject = null;
+            boolean success = true;
+            switch (command[0]) {
+            case "train" :
+                runObject = new TrainingProcessor();
+                success = execute(runObject, args);
+                break;
+            case "predict" :
+                runObject = new PredictionProcessor();
+                success = execute(runObject, args);
+                break;
+            case "--help" :
+            case "-h" :
+            case "help" :
+                args = new String[] { "--help" };
+                System.err.println("Command code \"train\":");
+                runObject = new TrainingProcessor();
+                execute(runObject, args);
+                System.err.println();
+                System.err.println("Command code \"predict\":");
+                runObject = new PredictionProcessor();
+                execute(runObject, args);
+                break;
+            default :
+                throw new IllegalArgumentException("Invalid command code " + command[0] + ".");
+            }
+            if (! success) exitCode = 255;
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
+            exitCode = 255;
         }
-        // Compute the appropriate command object.
-        ICommand runObject = null;
-        switch (command[0]) {
-        case "train" :
-            runObject = new TrainingProcessor();
-            execute(runObject, args);
-            break;
-        case "predict" :
-            runObject = new PredictionProcessor();
-            execute(runObject, args);
-            break;
-        case "--help" :
-        case "-h" :
-        case "help" :
-            args = new String[] { "--help" };
-            System.err.println("Command code \"train\":");
-            runObject = new TrainingProcessor();
-            execute(runObject, args);
-            System.err.println();
-            System.err.println("Command code \"predict\":");
-            runObject = new PredictionProcessor();
-            execute(runObject, args);
-            break;
-        default :
-            throw new IllegalArgumentException("Invalid command code " + command[0] + ".");
-        }
+        // Force cleanup.
+        System.exit(exitCode);
     }
 
     /**
@@ -76,13 +86,16 @@ public class App
      *
      * @param runObject		command processor to execute
      * @param args			command-line parameters
+     *
+     * @return TRUE if successful, else FALSE
      */
-    public static void execute(ICommand runObject, String[] args) {
+    public static boolean execute(ICommand runObject, String[] args) {
         // Execute the command.
-        boolean ok = runObject.parseCommand(args);
-        if (ok) {
+        boolean retVal = runObject.parseCommand(args);
+        if (retVal) {
             runObject.run();
         }
+        return retVal;
     }
 
 }

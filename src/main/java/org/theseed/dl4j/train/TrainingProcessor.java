@@ -8,6 +8,7 @@ import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -133,7 +134,9 @@ import org.theseed.utils.IntegerList;
  * 				reduce the output from the convolution layer; the default is 1, meaning no subsampling
  * --filters	specifies the number of filters to use during convolution; each filter represents a pass
  * 				over the input with different trial parameters; the output size is multiplied by the
- * 				number of filters
+ * 				number of filters; a separate filter count can be specified for each convolution layer
+ * 				by separating the values with commas; the last value will be repeated if the number of
+ * 				filters specified is less than the number of convolution layers
  *
  * The following are utility options
  *
@@ -160,6 +163,8 @@ public class TrainingProcessor implements ICommand {
     IntegerList convolutions;
     /** list of hidden layer widths */
     IntegerList denseLayers;
+    /** list of filter counts */
+    IntegerList filterSizes;
 
     /** logging facility */
     private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
@@ -271,8 +276,10 @@ public class TrainingProcessor implements ICommand {
     private int subFactor;
 
     /** convolution output */
-    @Option(name="--filters", metaVar="3", usage="number of trial filters to use for convolution")
-    private int convOut;
+    @Option(name="--filters", metaVar="3", usage="number of trial filters to use for each convolution")
+    private void setFilters(String filters) {
+        this.filterSizes = new IntegerList(filters);
+    }
 
     /** comma-delimited list of metadata column names */
     @Option(name="--meta", metaVar="name,date", usage="comma-delimited list of metadata columns")
@@ -390,7 +397,7 @@ public class TrainingProcessor implements ICommand {
         this.convolutions = new IntegerList();
         this.channelMode = false;
         this.subFactor = 1;
-        this.convOut = 1;
+        this.filterSizes = new IntegerList("1");
         this.metaCols = "";
         this.channelCount = 1;
         this.parmFile = null;
@@ -438,7 +445,9 @@ public class TrainingProcessor implements ICommand {
                             this.reader = myReader;
                             log.info("Channel input with {} channels.", this.channelCount);
                         }
-
+                        // Insure the number of filters is not greater than the number of convolutions.
+                        if (! this.convolutions.isEmpty() && this.filterSizes.size() > this.convolutions.size())
+                            throw new IllegalArgumentException("Cannot have more filters than convolution layers.");
                         // Verify that the subfactor is in range.
                         int subChannels = this.reader.getWidth();
                         if (! this.convolutions.isEmpty() && this.subFactor > 1) {
@@ -456,7 +465,6 @@ public class TrainingProcessor implements ICommand {
                         // Compute the default hidden layer width. Note the default is only set if the list
                         // is currently empty.
                         this.denseLayers.setDefault((subChannels + this.labels.size() + 1) / 2);
-
                     }
                 }
                 // If the user asked for a configuration file, write it here.
@@ -518,7 +526,7 @@ public class TrainingProcessor implements ICommand {
         writer.format("--gradNorm %s\t# gradient normalization strategy%n", this.gradNorm.toString());
         commentFlag = (this.convolutions.isEmpty() ? "# " : "");
         writer.format("%s--cnn %d\t# convolution kernel sizes%n", commentFlag, this.convolutions);
-        writer.format("%s--filters %d\t# number of convolution filters to try%n", commentFlag, this.convOut);
+        writer.format("%s--filters %s\t# number of convolution filters to try%n", commentFlag, this.filterSizes);
         writer.format("%s--sub %d\t# subsampling factor%n", commentFlag, this.subFactor);
         commentFlag = (this.rawMode ? "" : "# ");
         writer.format("%s--raw\t# suppress input normalization%n", commentFlag);
@@ -569,14 +577,20 @@ public class TrainingProcessor implements ICommand {
             }
             configuration.setInputType(inputShape);
             if (! this.convolutions.isEmpty()) {
-                // Create the convolution layers
+                // Create the convolution layers.  For the first layer, the channel depth is the number
+                // of channels and the output size is the first filter size.
+                int depth = this.channelCount;
+                int convOut = this.filterSizes.first();
                 for (int convKernel : this.convolutions) {
                     log.info("Creating convolution layer with {} inputs.", inWidth);
                     configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
-                            .nIn(this.channelCount).nOut(this.convOut).kernelSize(1, convKernel).build());
+                            .nIn(depth).nOut(convOut).kernelSize(1, convKernel).build());
                     // There is one output column for each examined kernel.  Each column has
                     // one value per filter in its vector.
                     inWidth = (inWidth - convKernel + 1);
+                    // The new depth is the number of filters.
+                    depth = convOut;
+                    if (this.filterSizes.hasNext()) convOut = this.filterSizes.next();
                 }
                 if (subFactor > 1) {
                     log.info("Creating subsampling layer with {} inputs.", inWidth);
@@ -588,7 +602,7 @@ public class TrainingProcessor implements ICommand {
                 }
                 // Factor the filter count into the input width because it will be
                 // flattened for the dense layer.
-                inWidth *= this.convOut;
+                inWidth *= convOut;
             } else {
                 // Not convolution, so our input layer is dense.
                 if (this.channelMode) {
@@ -673,7 +687,7 @@ public class TrainingProcessor implements ICommand {
                             "     iterations  = %12d, batch size    = %12d%n" +
                             "     test size   = %12d, seed number   = %12d%n" +
                             "     learn rate  = %12e, bias rate     = %12g%n" +
-                            "     subsampling = %12d, conv. filters = %12d%n" +
+                            "     subsampling = %12d%n" +
                             "     --------------------------------------------------------%n" +
                             "     Training set strategy is %s.%n" +
                             "     Regularization method is %s with factor %g.%n" +
@@ -684,14 +698,15 @@ public class TrainingProcessor implements ICommand {
                             "     Output layer loss function is %s.%n" +
                             "     %s minutes to run %d %s with %d score bounces.",
                            this.iterations, this.batchSize, this.testSize, this.seed,
-                           this.learnRate, this.biasRate, this.subFactor, this.convOut,
+                           this.learnRate, this.biasRate, this.subFactor,
                            this.method.toString(), regularization, regFactor, this.gradNorm.toString(),
                            this.initActivationType.toString(), this.activationType.toString(),
                            outActivation.toString(), this.lossFunction.toString(),
                            minutes, runStats.getEventCount(), myTrainer.eventsName(),
                            runStats.getBounceCount()));
             if (! this.convolutions.isEmpty())
-                parms.append(String.format("%n     Convolution layers used with kernel sizes %s.", this.convolutions));
+                parms.append(String.format("%n     Convolution layers used with kernel sizes %s and filters %s.",
+                        this.convolutions, this.filterSizes));
             parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
             if (this.rawMode)
                 parms.append(String.format("%n     Data normalization is turned off."));
@@ -724,7 +739,7 @@ public class TrainingProcessor implements ICommand {
             trialWriter.println(parms);
             trialWriter.close();
         } catch (IOException e) {
-            log.error(e.getMessage());
+            throw new UncheckedIOException("Error in training.", e);
         }
     }
 

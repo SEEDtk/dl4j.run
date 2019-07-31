@@ -137,6 +137,9 @@ import org.theseed.utils.IntegerList;
  * 				number of filters; a separate filter count can be specified for each convolution layer
  * 				by separating the values with commas; the last value will be repeated if the number of
  * 				filters specified is less than the number of convolution layers
+ * --stride		a comma-delimited list indicating the stride for each convolution layer; if there
+ * 				are fewer strides than convolution layers, the last one will be used for the rest;
+ * 				the default is 1
  *
  * The following are utility options
  *
@@ -165,6 +168,8 @@ public class TrainingProcessor implements ICommand {
     IntegerList denseLayers;
     /** list of filter counts */
     IntegerList filterSizes;
+    /** list of strides */
+    IntegerList strides;
 
     /** logging facility */
     private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
@@ -279,6 +284,12 @@ public class TrainingProcessor implements ICommand {
     @Option(name="--filters", metaVar="3", usage="number of trial filters to use for each convolution")
     private void setFilters(String filters) {
         this.filterSizes = new IntegerList(filters);
+    }
+
+    /** convolution strides */
+    @Option(name="--strides", metaVar="3,2", usage="stride to use for each convolution")
+    private void setStrides(String strides) {
+        this.strides = new IntegerList(strides);
     }
 
     /** comma-delimited list of metadata column names */
@@ -398,6 +409,7 @@ public class TrainingProcessor implements ICommand {
         this.channelMode = false;
         this.subFactor = 1;
         this.filterSizes = new IntegerList("1");
+        this.strides = new IntegerList("1");
         this.metaCols = "";
         this.channelCount = 1;
         this.parmFile = null;
@@ -445,15 +457,21 @@ public class TrainingProcessor implements ICommand {
                             this.reader = myReader;
                             log.info("Channel input with {} channels.", this.channelCount);
                         }
-                        // Insure the number of filters is not greater than the number of convolutions.
-                        if (! this.convolutions.isEmpty() && this.filterSizes.size() > this.convolutions.size())
-                            throw new IllegalArgumentException("Cannot have more filters than convolution layers.");
-                        // Verify that the subfactor is in range.
+                        // Insure the number of filters or strides is not greater than the number of convolutions.
+                        if (! this.convolutions.isEmpty()) {
+                        	if (this.filterSizes.size() > this.convolutions.size())
+                        		throw new IllegalArgumentException("Cannot have more filters than convolution layers.");
+	                    	if (this.strides.size() > this.convolutions.size())
+	                    		throw new IllegalArgumentException("Cannot have more strides than convolution layers.");
+                        }
+	                    // Verify that the subfactor is in range.
                         int subChannels = this.reader.getWidth();
+                        int strideFactor = this.strides.first();
                         if (! this.convolutions.isEmpty() && this.subFactor > 1) {
                             // Compute the width after the last convolution.
                             for (int cWidth : this.convolutions) {
-                                subChannels -= (cWidth - 1);
+                                subChannels = (subChannels - cWidth) / strideFactor + 1;
+                                strideFactor = this.strides.softNext();
                             }
                             if (subChannels <= this.subFactor) {
                                 throw new IllegalArgumentException("Subsampling factor must be less than " +
@@ -528,6 +546,7 @@ public class TrainingProcessor implements ICommand {
         writer.format("%s--cnn %d\t# convolution kernel sizes%n", commentFlag, this.convolutions);
         writer.format("%s--filters %s\t# number of convolution filters to try%n", commentFlag, this.filterSizes);
         writer.format("%s--sub %d\t# subsampling factor%n", commentFlag, this.subFactor);
+        writer.format("%s--stride %s\t#stride to use for convolution layer%n", commentFlag, this.strides);
         commentFlag = (this.rawMode ? "" : "# ");
         writer.format("%s--raw\t# suppress input normalization%n", commentFlag);
         if (this.comment == null)
@@ -581,16 +600,18 @@ public class TrainingProcessor implements ICommand {
                 // of channels and the output size is the first filter size.
                 int depth = this.channelCount;
                 int convOut = this.filterSizes.first();
+                int strideFactor = this.strides.first();
                 for (int convKernel : this.convolutions) {
                     log.info("Creating convolution layer with {} inputs.", inWidth);
                     configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
-                            .nIn(depth).nOut(convOut).kernelSize(1, convKernel).build());
+                            .nIn(depth).nOut(convOut).kernelSize(1, convKernel)
+                            .stride(1, strideFactor).build());
                     // There is one output column for each examined kernel.  Each column has
                     // one value per filter in its vector.
-                    inWidth = (inWidth - convKernel + 1);
+                    inWidth = (inWidth - convKernel) / strideFactor + 1;
                     // The new depth is the number of filters.
                     depth = convOut;
-                    if (this.filterSizes.hasNext()) convOut = this.filterSizes.next();
+                    convOut = this.filterSizes.softNext();
                 }
                 if (subFactor > 1) {
                     log.info("Creating subsampling layer with {} inputs.", inWidth);
@@ -704,9 +725,11 @@ public class TrainingProcessor implements ICommand {
                            outActivation.toString(), this.lossFunction.toString(),
                            minutes, runStats.getEventCount(), myTrainer.eventsName(),
                            runStats.getBounceCount()));
-            if (! this.convolutions.isEmpty())
-                parms.append(String.format("%n     Convolution layers used with kernel sizes %s and filters %s.",
-                        this.convolutions, this.filterSizes));
+            if (! this.convolutions.isEmpty()) {
+                parms.append(String.format("%n     Convolution layers used with kernel sizes %s%n", this.convolutions));
+                parms.append(String.format("%n     Convolutions used filter sizes %s and strides %s.",
+                		this.filterSizes, this.strides));
+            }
             parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
             if (this.rawMode)
                 parms.append(String.format("%n     Data normalization is turned off."));

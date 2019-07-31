@@ -37,7 +37,6 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.nd4j.evaluation.classification.Evaluation;
 import org.nd4j.linalg.activations.Activation;
-import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
@@ -459,12 +458,12 @@ public class TrainingProcessor implements ICommand {
                         }
                         // Insure the number of filters or strides is not greater than the number of convolutions.
                         if (! this.convolutions.isEmpty()) {
-                        	if (this.filterSizes.size() > this.convolutions.size())
-                        		throw new IllegalArgumentException("Cannot have more filters than convolution layers.");
-	                    	if (this.strides.size() > this.convolutions.size())
-	                    		throw new IllegalArgumentException("Cannot have more strides than convolution layers.");
+                            if (this.filterSizes.size() > this.convolutions.size())
+                                throw new IllegalArgumentException("Cannot have more filters than convolution layers.");
+                            if (this.strides.size() > this.convolutions.size())
+                                throw new IllegalArgumentException("Cannot have more strides than convolution layers.");
                         }
-	                    // Verify that the subfactor is in range.
+                        // Verify that the subfactor is in range.
                         int subChannels = this.reader.getWidth();
                         int strideFactor = this.strides.first();
                         if (! this.convolutions.isEmpty() && this.subFactor > 1) {
@@ -676,7 +675,7 @@ public class TrainingProcessor implements ICommand {
             this.reader.setBatchSize(this.batchSize);
             long start = System.currentTimeMillis();
             Trainer myTrainer = Trainer.create(this.method, this, log);
-            RunStats runStats = myTrainer.trainModel(model, this.reader);
+            RunStats runStats = myTrainer.trainModel(model, this.reader, testingSet);
             model = runStats.bestModel;
             String minutes = DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss");
             // Here we save the model.
@@ -685,7 +684,6 @@ public class TrainingProcessor implements ICommand {
                 log.info("Saving model to {}.", saveFile);
                 ModelSerializer.writeModel(model, saveFile, true, normalizer);
             }
-            INDArray output = model.output(this.testingSet.getFeatures());
             // Display the configuration.
             String regularization;
             double regFactor;
@@ -726,9 +724,9 @@ public class TrainingProcessor implements ICommand {
                            minutes, runStats.getEventCount(), myTrainer.eventsName(),
                            runStats.getBounceCount()));
             if (! this.convolutions.isEmpty()) {
-                parms.append(String.format("%n     Convolution layers used with kernel sizes %s%n", this.convolutions));
+                parms.append(String.format("%n     Convolution layers used with kernel sizes %s", this.convolutions));
                 parms.append(String.format("%n     Convolutions used filter sizes %s and strides %s.",
-                		this.filterSizes, this.strides));
+                        this.filterSizes, this.strides));
             }
             parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
             if (this.rawMode)
@@ -739,8 +737,7 @@ public class TrainingProcessor implements ICommand {
                 parms.append(String.format("%n%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW."));
             } else {
                 //evaluate the model on the test set: compare the output to the actual
-                Evaluation eval = new Evaluation(this.labels);
-                eval.eval(this.testingSet.getLabels(), output);
+                Evaluation eval = Trainer.evaluateModel(model, this.testingSet, this.labels);
                 // Output the evaluation.
                 parms.append(eval.stats());
                 ConfusionMatrix<Integer> matrix = eval.getConfusion();
@@ -785,5 +782,12 @@ public class TrainingProcessor implements ICommand {
      */
     public int getMaxBatches() {
         return maxBatches;
+    }
+
+    /**
+     * @return the label names for this model
+     */
+    public List<String> getLabels() {
+        return this.labels;
     }
 }

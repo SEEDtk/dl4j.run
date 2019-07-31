@@ -4,8 +4,11 @@
 package org.theseed.dl4j.train;
 
 import java.util.Iterator;
+import java.util.List;
 
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
+import org.nd4j.evaluation.classification.Evaluation;
+import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
 import org.theseed.dl4j.train.TrainingProcessor.RunStats;
@@ -39,12 +42,14 @@ public abstract class Trainer {
     /**
      * Abstract method to train a model.
      *
-     * @param model		the model to train
-     * @param reader	the reader to read in the dataset
+     * @param model			the model to train
+     * @param reader		the reader to read in the dataset
+     * @param testingSet	testing set for early termination
      *
      * @return a RunStats for the training operation
      */
-    public abstract RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader);
+    public abstract RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader,
+            DataSet testingSet);
 
     /**
      * @return the plural name for an event in this trainer's cycle
@@ -73,6 +78,22 @@ public abstract class Trainer {
         default :
             throw new IllegalArgumentException("Invalid trainer type.");
         }
+        return retVal;
+    }
+
+    /**
+     * Evaluate a model against a testing set
+     *
+     * @param model			model to evaluate
+     * @param testingSet	testing set for the evaluation
+     * @param labels		list of label names
+     *
+     * @return an evaluation object containing an assessment of the model's performance
+     */
+    public static Evaluation evaluateModel(MultiLayerNetwork model, DataSet testingSet, List<String> labels) {
+        INDArray output = model.output(testingSet.getFeatures());
+        Evaluation retVal = new Evaluation(labels);
+        retVal.eval(testingSet.getLabels(), output);
         return retVal;
     }
 

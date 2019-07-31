@@ -33,13 +33,13 @@ public class BatchTrainer extends Trainer {
     /**
      * Train the model one batch at a time.
      *
-     * @param model		the model to train
-     * @param reader	reader for traversing the training data
-     * @param processor	training processor controlling the model
+     * @param model			the model to train
+     * @param reader		reader for traversing the training data
+     * @param testingSet	testing set for evaluation
      *
      * @return a RunStats object describing our progress and success
      */
-    public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader) {
+    public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet) {
         RunStats retVal = new RunStats(model);
         double oldScore = Double.MAX_VALUE;
         while (reader.hasNext() && retVal.getEventCount() < processor.getMaxBatches() && ! retVal.isErrorStop()) {

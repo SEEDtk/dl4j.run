@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.nd4j.evaluation.classification.Evaluation;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
@@ -33,7 +34,7 @@ public class EpochTrainer extends Trainer {
     }
 
     @Override
-    public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader) {
+    public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet) {
         RunStats retVal = new RunStats(model);
         // Get all of the batches into a list, up to the maximum.
         log.info("Reading training data into memory.");
@@ -45,6 +46,7 @@ public class EpochTrainer extends Trainer {
         double oldScore = Double.MAX_VALUE;
         // Initialize the stats and counters for keeping the best generation.
         double bestScore = Double.MAX_VALUE;
+        double bestAccuracy = 0;
         int bestIter = 0;
         int numSaves = 0;
         // Do one epoch per iteration.
@@ -57,19 +59,28 @@ public class EpochTrainer extends Trainer {
             }
             double seconds = (double) (System.currentTimeMillis() - start) / 1000;
             double newScore = model.score();
-            String saveFlag = "";
             if (newScore > oldScore) {
                 retVal.bounce();
-            } else if (newScore < bestScore) {
-                retVal.setBestModel(model.clone());
-                bestScore = newScore;
-                bestIter = retVal.getEventCount();
-                saveFlag = "  Model saved.";
-                numSaves++;
+                log.info("Score after epoch {} is {}.  {} seconds to process {} batches.", retVal.getEventCount(),
+                        newScore, seconds, batchesRead);
+            } else {
+                Evaluation eval = Trainer.evaluateModel(model, testingSet, this.processor.getLabels());
+                double newAccuracy = eval.accuracy();
+                String saveFlag = "";
+                if (newAccuracy > bestAccuracy) {
+                    retVal.setBestModel(model.clone());
+                    bestScore = newScore;
+                    bestAccuracy = newAccuracy;
+                    bestIter = retVal.getEventCount();
+                    saveFlag = "  Model saved.";
+                    numSaves++;
+                } else {
+                    saveFlag = "";
+                }
+                log.info("Score after epoch {} is {}. {} seconds to process {} batches. Accuracy = {}.{}",
+                        retVal.getEventCount(), newScore, seconds, batchesRead, newAccuracy, saveFlag);
             }
             oldScore = newScore;
-            log.info("Score after epoch {} is {}.  {} seconds to process {} batches.{}", retVal.getEventCount(),
-                    newScore, seconds, batchesRead, saveFlag);
             // Force a stop if we have overflow or underflow.
             if (! Double.isFinite(newScore)) {
                 log.error("Overflow/Underflow in gradient processing.  Model abandoned.");

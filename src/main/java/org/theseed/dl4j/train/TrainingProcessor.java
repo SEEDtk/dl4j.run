@@ -27,6 +27,7 @@ import org.deeplearning4j.nn.conf.layers.DenseLayer;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
 import org.deeplearning4j.nn.conf.layers.SubsamplingLayer;
 import org.deeplearning4j.nn.conf.preprocessor.CnnToFeedForwardPreProcessor;
+import org.deeplearning4j.nn.conf.layers.BatchNormalization;
 import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
@@ -84,7 +85,7 @@ import org.theseed.utils.IntegerList;
  * The following command-line options are supported.
  *
  * -c	index (1-based) or name of the column containing the classification labels; the
- * 		default is 0 (last column)
+ * 		default is 1 (first column)
  * -n	number of iterations to run on each batch; the default is 1000
  * -b	size of each batch; the default is 500
  * -t	size of the testing set, which is the first batch read and is used to compute
@@ -103,7 +104,6 @@ import org.theseed.utils.IntegerList;
  * 		indicating all batches should be run
  * -s	seed value to use for random number generation; the default is to use the last
  * 		20 bits of the current time
- * -d	number of hidden layers to use (depth); the default is 1
  * -l	loss function for output layer; the default is "mcxent"
  * -i	name of the training set file; the default is "training.tbl" in the model directory
  * -a	activation function for hidden layers; this should be the name of one of the
@@ -126,6 +126,7 @@ import org.theseed.utils.IntegerList;
  * --comment	a comment to display at the beginning of the trial log
  * --method		training strategy to use-- epoch (small datasets) or batch (large datasets); the default
  * 				is EPOCH
+ * --batch		use batch normalization before the hidden layers
  *
  * For a convolution input layer, the following additional parameters are used.
  *
@@ -139,6 +140,12 @@ import org.theseed.utils.IntegerList;
  * --stride		a comma-delimited list indicating the stride for each convolution layer; if there
  * 				are fewer strides than convolution layers, the last one will be used for the rest;
  * 				the default is 1
+ *
+ * For training method EPOCH, the following options apply:
+ *
+ * --earlyStop	maximum number of iterations allowed with no accuracy improvement; if this
+ * 				limit is exceeded, the run is terminated; the default of 0 causes the value
+ * 				to be set equal to the iteration limit, effectively negating the parameter
  *
  * The following are utility options
  *
@@ -269,6 +276,10 @@ public class TrainingProcessor implements ICommand {
             usage="gradient normalization strategy")
     private GradientNormalization gradNorm;
 
+    /** use batch normalization */
+    @Option(name="--batch", usage="use batch normalization before hidden layers")
+    private boolean batchNormFlag;
+
     /** convolution mode */
     @Option(name="--cnn", metaVar="3", usage="convolution mode, specifying kernel size of each layer")
     private void setConvolution(String cnn) {
@@ -303,6 +314,11 @@ public class TrainingProcessor implements ICommand {
     @Option(name="--method", metaVar="epoch", usage="strategy for processing of training set")
     private Trainer.Type method;
 
+    /** early-stop limit */
+    @Option(name="--earlyStop", aliases={"--early"}, metaVar="100",
+    		usage="early stop max useless iterations (0 to turn off)")
+    private int earlyStop;
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -315,12 +331,16 @@ public class TrainingProcessor implements ICommand {
         private int bounceCount;
         private int eventCount;
         private MultiLayerNetwork bestModel;
+        private int saveCount;
+        private int bestEvent;
 
         public RunStats(MultiLayerNetwork model) {
             this.errorStop = false;
             this.bounceCount = 0;
             this.eventCount = 0;
             this.bestModel = model;
+            this.bestEvent = 0;
+            this.saveCount = 0;
         }
 
         /** Record a score bounce. */
@@ -367,11 +387,27 @@ public class TrainingProcessor implements ICommand {
         }
 
         /**
+		 * @return the number of model saves
+		 */
+		public int getSaveCount() {
+			return saveCount;
+		}
+
+		/**
+		 * @return the event corresponding to the best model
+		 */
+		public int getBestEvent() {
+			return bestEvent;
+		}
+
+		/**
          * Store the new best model.
          * @param bestModel 	the new best model
          */
         public void setBestModel(MultiLayerNetwork bestModel) {
             this.bestModel = bestModel;
+            this.bestEvent = this.eventCount;
+            this.saveCount++;
         }
 
     }
@@ -387,7 +423,7 @@ public class TrainingProcessor implements ICommand {
         boolean retVal = false;
         // Set the defaults.
         this.help = false;
-        this.labelCol = "0";
+        this.labelCol = "1";
         this.iterations = 1000;
         this.batchSize = 500;
         this.testSize = 2000;
@@ -413,6 +449,8 @@ public class TrainingProcessor implements ICommand {
         this.channelCount = 1;
         this.parmFile = null;
         this.method = Type.EPOCH;
+        this.batchNormFlag = false;
+        this.earlyStop = 0;
         this.comment = null;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
@@ -486,6 +524,8 @@ public class TrainingProcessor implements ICommand {
                 }
                 // If the user asked for a configuration file, write it here.
                 if (this.parmFile != null) writeParms(this.parmFile);
+                // Correct the early stop value.
+                if (this.earlyStop == 0) this.earlyStop = this.iterations;
                 // We made it this far, we can run the application.
                 retVal = true;
             }
@@ -514,6 +554,7 @@ public class TrainingProcessor implements ICommand {
         String functions = Stream.of(Type.values()).map(Type::name).collect(Collectors.joining(", "));
         writer.format("## Valid training methods are %s.%n", functions);
         writer.format("--method %s\t# training set processing method%n", this.method.toString());
+        writer.format("--earlyStop %d\t# early-stop useless-iteration limit", this.earlyStop);
         if (this.denseLayers.isEmpty())
             writer.format("# --widths %d\t# configure number and widths of hidden layers%n", this.reader.getWidth());
         else
@@ -541,8 +582,10 @@ public class TrainingProcessor implements ICommand {
         functions = Stream.of(GradientNormalization.values()).map(GradientNormalization::name).collect(Collectors.joining(", "));
         writer.format("## Valid gradient normalizations are %s.%n", functions);
         writer.format("--gradNorm %s\t# gradient normalization strategy%n", this.gradNorm.toString());
+        commentFlag = (this.batchNormFlag ? "" : "# ");
+        writer.format("%s--batch\t# use a batch normalization layer", commentFlag);
         commentFlag = (this.convolutions.isEmpty() ? "# " : "");
-        writer.format("%s--cnn %d\t# convolution kernel sizes%n", commentFlag, this.convolutions);
+        writer.format("%s--cnn %s\t# convolution kernel sizes%n", commentFlag, this.convolutions);
         writer.format("%s--filters %s\t# number of convolution filters to try%n", commentFlag, this.filterSizes);
         writer.format("%s--sub %d\t# subsampling factor%n", commentFlag, this.subFactor);
         writer.format("%s--stride %s\t#stride to use for convolution layer%n", commentFlag, this.strides);
@@ -611,6 +654,7 @@ public class TrainingProcessor implements ICommand {
                     // The new depth is the number of filters.
                     depth = convOut;
                     convOut = this.filterSizes.softNext();
+                    strideFactor = this.strides.softNext();
                 }
                 if (subFactor > 1) {
                     log.info("Creating subsampling layer with {} inputs.", inWidth);
@@ -635,6 +679,11 @@ public class TrainingProcessor implements ICommand {
                 configuration.layer(new DenseLayer.Builder().activation(this.initActivationType)
                         .nIn(inWidth).nOut(inWidth)
                         .build());
+            }
+            // Add batch normalization if desired.
+            if (this.batchNormFlag) {
+            	log.info("Adding batch normalization layer.");
+            	configuration.layer(new BatchNormalization.Builder().build());
             }
             // Compute the default width for the hidden layer.
             int outputCount = this.labels.size();
@@ -687,6 +736,10 @@ public class TrainingProcessor implements ICommand {
             // Display the configuration.
             String regularization;
             double regFactor;
+            if (this.batchNormFlag) {
+            	regularization = "Batch normalization";
+            	regFactor = 0.0;
+            }
             if (this.l2Parm > 0) {
                 regularization = "L2";
                 regFactor = this.l2Parm;
@@ -715,19 +768,23 @@ public class TrainingProcessor implements ICommand {
                             "     Hidden layer activation type is %s.%n" +
                             "     Output layer activation type is %s.%n" +
                             "     Output layer loss function is %s.%n" +
-                            "     %s minutes to run %d %s with %d score bounces.",
+                            "     %s minutes to run %d %s (best was %d), with %d score bounces.%n" +
+                            "     %d models saved.",
                            this.iterations, this.batchSize, this.testSize, this.seed,
                            this.learnRate, this.biasRate, this.subFactor,
                            this.method.toString(), regularization, regFactor, this.gradNorm.toString(),
                            this.initActivationType.toString(), this.activationType.toString(),
                            outActivation.toString(), this.lossFunction.toString(),
                            minutes, runStats.getEventCount(), myTrainer.eventsName(),
-                           runStats.getBounceCount()));
+                           runStats.getBestEvent(), runStats.getBounceCount(),
+                           runStats.getSaveCount()));
             if (! this.convolutions.isEmpty()) {
                 parms.append(String.format("%n     Convolution layers used with kernel sizes %s", this.convolutions));
                 parms.append(String.format("%n     Convolutions used filter sizes %s and strides %s.",
                         this.filterSizes, this.strides));
             }
+            if (this.batchNormFlag)
+            	parms.append(String.format("%n     Batch normalization applied."));
             parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
             if (this.rawMode)
                 parms.append(String.format("%n     Data normalization is turned off."));
@@ -745,6 +802,11 @@ public class TrainingProcessor implements ICommand {
                 for (int i = 0; i < this.labels.size(); i++) {
                     double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getActualTotal(i);
                     parms.append(String.format("%n%-10s has %6.2f%% accuracy.", this.labels.get(i), success));
+                }
+                // We want the success rate for each prediction.  This is correctly-predicted / total.
+                for (int i = 0; i < this.labels.size(); i++) {
+                	double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getPredictedTotal(i);
+                	parms.append(String.format("%n%-10s is  %6.2f%% accurate.", this.labels.get(i), success));
                 }
             }
             // Add the summary.
@@ -789,5 +851,12 @@ public class TrainingProcessor implements ICommand {
      */
     public List<String> getLabels() {
         return this.labels;
+    }
+
+    /**
+     * @return the early-stop limit
+     */
+    public int getEarlyStop() {
+    	return this.earlyStop;
     }
 }

@@ -24,8 +24,10 @@ import org.deeplearning4j.nn.conf.dropout.Dropout;
 import org.deeplearning4j.nn.conf.dropout.GaussianDropout;
 import org.deeplearning4j.nn.conf.inputs.InputType;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.Layer;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
 import org.deeplearning4j.nn.conf.layers.SubsamplingLayer;
+import org.deeplearning4j.nn.conf.layers.misc.ElementWiseMultiplicationLayer;
 import org.deeplearning4j.nn.conf.preprocessor.CnnToFeedForwardPreProcessor;
 import org.deeplearning4j.nn.conf.layers.BatchNormalization;
 import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
@@ -92,7 +94,8 @@ import org.theseed.utils.IntegerList;
  * 		normalization; the default is 2000
  * -w	the width of each hidden layer; this is a comma-delimited list with one number per
  * 		layer, in order; if no hidden layers are specified, a default hidden layer whose
- * 		width is the mean of the input and output widths will be created
+ * 		width is the mean of the input and output widths will be created; a width of 0 creates
+ * 		an element-wise multiplication layer
  * -g	Gaussian dropout rate used to prevent overfitting-- a higher value makes the model
  * 		less sensitive and a lower one makes it more sensitive; the default is 0.3.; a value
  * 		of 0 suppresses dropout
@@ -212,7 +215,7 @@ public class TrainingProcessor implements ICommand {
 
     /** number of nodes in each middle layer */
     @Option(name="-w", aliases={"--widths"}, metaVar="7",
-            usage="width of each hidden layer")
+            usage="width of each hidden layer (0 for element-wise multiplication")
     private void setLayers(String layerWidths) {
         this.denseLayers = new IntegerList(layerWidths);
     }
@@ -316,7 +319,7 @@ public class TrainingProcessor implements ICommand {
 
     /** early-stop limit */
     @Option(name="--earlyStop", aliases={"--early"}, metaVar="100",
-    		usage="early stop max useless iterations (0 to turn off)")
+            usage="early stop max useless iterations (0 to turn off)")
     private int earlyStop;
 
     /** model directory */
@@ -387,20 +390,20 @@ public class TrainingProcessor implements ICommand {
         }
 
         /**
-		 * @return the number of model saves
-		 */
-		public int getSaveCount() {
-			return saveCount;
-		}
+         * @return the number of model saves
+         */
+        public int getSaveCount() {
+            return saveCount;
+        }
 
-		/**
-		 * @return the event corresponding to the best model
-		 */
-		public int getBestEvent() {
-			return bestEvent;
-		}
+        /**
+         * @return the event corresponding to the best model
+         */
+        public int getBestEvent() {
+            return bestEvent;
+        }
 
-		/**
+        /**
          * Store the new best model.
          * @param bestModel 	the new best model
          */
@@ -682,27 +685,40 @@ public class TrainingProcessor implements ICommand {
             }
             // Add batch normalization if desired.
             if (this.batchNormFlag) {
-            	log.info("Adding batch normalization layer.");
-            	configuration.layer(new BatchNormalization.Builder().build());
+                log.info("Adding batch normalization layer.");
+                configuration.layer(new BatchNormalization.Builder().build());
             }
             // Compute the default width for the hidden layer.
             int outputCount = this.labels.size();
             int outWidth;
             // Compute the hidden layers.
             for (int layerSize : this.denseLayers) {
-                outWidth = layerSize;
-                log.info("Creating hidden layer with input width {} and {} outputs.", inWidth, outWidth);
-                DenseLayer.Builder builder = new DenseLayer.Builder().nIn(inWidth).nOut(outWidth);
-                // Do the regularization.
-                if (this.l2Parm > 0) {
-                    builder.l2(this.l2Parm);
-                } else if (this.normalDrop > 0) {
-                    builder.dropOut(new Dropout(this.normalDrop));
-                } else if (this.gaussRate > 0) {
-                    builder.dropOut(new GaussianDropout(this.gaussRate));
+                // The new layer goes in here.
+                Layer newLayer;
+                if (layerSize == 0) {
+                    // Here we have an ElementWiseMultiplicationLayer.
+                    outWidth = inWidth;
+                    ElementWiseMultiplicationLayer.Builder builder = new ElementWiseMultiplicationLayer.Builder()
+                            .nIn(inWidth).nOut(outWidth);
+                    newLayer = builder.build();
+                    log.info("Creating element-wise mulitplication layer with width {}.", inWidth);
+                } else {
+                    // Here we have a DenseLayer.
+                    outWidth = layerSize;
+                    log.info("Creating hidden layer with input width {} and {} outputs.", inWidth, outWidth);
+                    DenseLayer.Builder builder = new DenseLayer.Builder().nIn(inWidth).nOut(outWidth);
+                    // Do the regularization.
+                    if (this.l2Parm > 0) {
+                        builder.l2(this.l2Parm);
+                    } else if (this.normalDrop > 0) {
+                        builder.dropOut(new Dropout(this.normalDrop));
+                    } else if (this.gaussRate > 0) {
+                        builder.dropOut(new GaussianDropout(this.gaussRate));
+                    }
+                    newLayer = builder.build();
                 }
-                // Build and add the layer.
-                configuration.layer(builder.build());
+                // Add the layer.
+                configuration.layer(newLayer);
                 // Set up for the next one.
                 inWidth = outWidth;
             }
@@ -737,8 +753,8 @@ public class TrainingProcessor implements ICommand {
             String regularization;
             double regFactor;
             if (this.batchNormFlag) {
-            	regularization = "Batch normalization";
-            	regFactor = 0.0;
+                regularization = "Batch normalization";
+                regFactor = 0.0;
             }
             if (this.l2Parm > 0) {
                 regularization = "L2";
@@ -784,7 +800,7 @@ public class TrainingProcessor implements ICommand {
                         this.filterSizes, this.strides));
             }
             if (this.batchNormFlag)
-            	parms.append(String.format("%n     Batch normalization applied."));
+                parms.append(String.format("%n     Batch normalization applied."));
             parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
             if (this.rawMode)
                 parms.append(String.format("%n     Data normalization is turned off."));
@@ -801,12 +817,12 @@ public class TrainingProcessor implements ICommand {
                 // We want the success rate for each label.  This is correctly-predicted / actual.
                 for (int i = 0; i < this.labels.size(); i++) {
                     double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getActualTotal(i);
-                    parms.append(String.format("%n%-10s has %6.2f%% accuracy.", this.labels.get(i), success));
+                    parms.append(String.format("%n%-10s actuals are correctly predicted   %6.2f%% of the time.", this.labels.get(i), success));
                 }
                 // We want the success rate for each prediction.  This is correctly-predicted / total.
                 for (int i = 0; i < this.labels.size(); i++) {
-                	double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getPredictedTotal(i);
-                	parms.append(String.format("%n%-10s is  %6.2f%% accurate.", this.labels.get(i), success));
+                    double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getPredictedTotal(i);
+                    parms.append(String.format("%n%-10s predictions correspond to actuals %6.2f%% of the time.", this.labels.get(i), success));
                 }
             }
             // Add the summary.
@@ -857,6 +873,6 @@ public class TrainingProcessor implements ICommand {
      * @return the early-stop limit
      */
     public int getEarlyStop() {
-    	return this.earlyStop;
+        return this.earlyStop;
     }
 }

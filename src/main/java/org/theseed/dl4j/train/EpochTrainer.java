@@ -52,7 +52,7 @@ public class EpochTrainer extends Trainer {
         int uselessIterations = 0;
         // Do one epoch per iteration.
         while (retVal.getEventCount() < processor.getIterations() && ! retVal.isErrorStop() &&
-        		uselessIterations < processor.getEarlyStop()) {
+                uselessIterations < processor.getEarlyStop()) {
             retVal.event();
             log.info("Processing epoch {}.", retVal.getEventCount());
             long start = System.currentTimeMillis();
@@ -79,7 +79,7 @@ public class EpochTrainer extends Trainer {
                     numSaves++;
                     uselessIterations = 0;
                 } else {
-                    saveFlag = "";
+                    saveFlag = String.format("  Best was %g.", bestAccuracy);
                     uselessIterations++;
                 }
                 log.info("Score after epoch {} is {}. {} seconds to process {} batches. Accuracy = {}.{}",

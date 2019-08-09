@@ -54,6 +54,7 @@ import org.theseed.utils.ICommand;
  *
  * --meta	a comma-delimited list of the metadata columns; these columns are ignored during training; the
  * 			default is none
+ * --name	the model file name (the default is "model.ser" in the model directory)
 
  * @author Bruce Parrello
  *
@@ -97,7 +98,11 @@ public class PredictionProcessor implements ICommand {
     @Option(name="-o", aliases={"--result", "--header"}, metaVar="Result", usage="heading to put on result column")
     private String outColumn;
 
-    /** model directory */
+    /** model file name */
+    @Option(name="--name", usage="model file name (default is model.ser in model directory)")
+    private File modelName;
+
+   /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
@@ -112,6 +117,7 @@ public class PredictionProcessor implements ICommand {
         this.inputFile = null;
         this.metaCols = "";
         this.outColumn = "predicted";
+        this.modelName = null;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -133,10 +139,10 @@ public class PredictionProcessor implements ICommand {
                         // Parse the metadata column list.
                         this.metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
                         // Read in the model and the normalizer.
-                        File modelFile = new File(modelDir, "model.ser");
-                        this.model = ModelSerializer.restoreMultiLayerNetwork(modelFile, false);
-                        DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(modelFile);
-                        // Open the reader.
+                        if (this.modelName == null)
+                            this.modelName = new File(modelDir, "model.ser");
+                        this.model = ModelSerializer.restoreMultiLayerNetwork(this.modelName, false);
+                        DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(this.modelName);
                         // Determine the input type and get the appropriate reader.
                         File channelFile = new File(this.modelDir, "channels.tbl");
                         if (! channelFile.exists()) {

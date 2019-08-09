@@ -43,8 +43,6 @@ import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
-import org.nd4j.linalg.learning.config.Adam;
-import org.nd4j.linalg.learning.config.Sgd;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
 import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
 import org.slf4j.Logger;
@@ -130,6 +128,10 @@ import org.theseed.utils.IntegerList;
  * --method		training strategy to use-- epoch (small datasets) or batch (large datasets); the default
  * 				is EPOCH
  * --batch		use batch normalization before the hidden layers
+ * --weights	weight initialization algorithm; the default is XAVIER
+ * --updater	update algorithm to use; the default is ADAM
+ * --bUpdater	bias update algorithm to use; the default is SGD
+ * --name		name for the model file; the default is "model.ser" in the model directory
  *
  * For a convolution input layer, the following additional parameters are used.
  *
@@ -179,6 +181,8 @@ public class TrainingProcessor implements ICommand {
     IntegerList filterSizes;
     /** list of strides */
     IntegerList strides;
+    /** actual updater learning rate */
+    double realLearningRate;
 
     /** logging facility */
     private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
@@ -317,6 +321,10 @@ public class TrainingProcessor implements ICommand {
     @Option(name="--method", metaVar="epoch", usage="strategy for processing of training set")
     private Trainer.Type method;
 
+    /** weight initialization algorithm */
+    @Option(name="--weight", usage="weight initialization strategy")
+    private WeightInit weightInitMethod;
+
     /** early-stop limit */
     @Option(name="--earlyStop", aliases={"--early"}, metaVar="100",
             usage="early stop max useless iterations (0 to turn off)")
@@ -325,6 +333,18 @@ public class TrainingProcessor implements ICommand {
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
+
+    /** bias updater algorithm */
+    @Option(name="--bUpdater", usage="bias gradient updater algorithm")
+    private GradientUpdater.Type biasUpdateMethod;
+
+    /** model file name */
+    @Option(name="--name", usage="model file name (default is model.ser in model directory)")
+    private File modelName;
+
+    /** weight updater algorithm */
+    @Option(name="--updater", usage="weight gradient updater algorithm")
+    private GradientUpdater.Type weightUpdateMethod;
 
     /**
      * Class to describe a fitting run.
@@ -454,6 +474,10 @@ public class TrainingProcessor implements ICommand {
         this.method = Type.EPOCH;
         this.batchNormFlag = false;
         this.earlyStop = 0;
+        this.weightInitMethod = WeightInit.XAVIER;
+        this.biasUpdateMethod = GradientUpdater.Type.SGD;
+        this.weightUpdateMethod = GradientUpdater.Type.ADAM;
+        this.modelName = null;
         this.comment = null;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
@@ -525,10 +549,20 @@ public class TrainingProcessor implements ICommand {
                         this.denseLayers.setDefault((subChannels + this.labels.size() + 1) / 2);
                     }
                 }
+                // Compute the model file name if it is defaulting.
+                if (this.modelName == null)
+                    this.modelName = new File(this.modelDir, "model.ser");
                 // If the user asked for a configuration file, write it here.
                 if (this.parmFile != null) writeParms(this.parmFile);
                 // Correct the early stop value.
                 if (this.earlyStop == 0) this.earlyStop = this.iterations;
+                // Correct the Nesterov learning rate for the weight updater.  The default here is 0.1, not 1e-3
+                this.realLearningRate = this.learnRate;
+                if (this.weightUpdateMethod == GradientUpdater.Type.NESTEROVS)
+                    this.realLearningRate *= 100;
+                // Write out the comment.
+                if (this.comment != null)
+                    log.info("*** {}", this.comment);
                 // We made it this far, we can run the application.
                 retVal = true;
             }
@@ -557,7 +591,7 @@ public class TrainingProcessor implements ICommand {
         String functions = Stream.of(Type.values()).map(Type::name).collect(Collectors.joining(", "));
         writer.format("## Valid training methods are %s.%n", functions);
         writer.format("--method %s\t# training set processing method%n", this.method.toString());
-        writer.format("--earlyStop %d\t# early-stop useless-iteration limit", this.earlyStop);
+        writer.format("--earlyStop %d\t# early-stop useless-iteration limit%n", this.earlyStop);
         if (this.denseLayers.isEmpty())
             writer.format("# --widths %d\t# configure number and widths of hidden layers%n", this.reader.getWidth());
         else
@@ -572,12 +606,15 @@ public class TrainingProcessor implements ICommand {
             writer.println("# --maxBatches 10\t# limit the number of input batches");
         else
             writer.format("--maxBatches %d\t# maximum number of input batches to process%n", this.maxBatches);
-        writer.format("--learnRate %e\t# learning rate%n", this.learnRate);
-        writer.format("--updateRate %g\t# bias updater coefficient%n", this.biasRate);
+        writer.format("--learnRate %e\t# weight learning rate%n", this.learnRate);
+        writer.format("--updateRate %g\t# bias update coefficient%n", this.biasRate);
         writer.format("--seed %d\t# random number initialization seed%n", this.seed);
         functions = Stream.of(LossFunction.values()).map(LossFunction::name).collect(Collectors.joining(", "));
         writer.format("## Valid loss functions are %s.%n", functions);
         writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction);
+        functions = Stream.of(WeightInit.values()).map(WeightInit::name).collect(Collectors.joining(", "));
+        writer.format("## Valid weight initializations are %s.%n", functions);
+        writer.format("--weight %s\t# weight initialization method%n", this.weightInitMethod.toString());
         functions = Stream.of(Activation.values()).map(Activation::name).collect(Collectors.joining(", "));
         writer.format("## Valid activation functions are %s.%n", functions);
         writer.format("--init %s\t# initial activation function%n", this.initActivationType.toString());
@@ -586,12 +623,17 @@ public class TrainingProcessor implements ICommand {
         writer.format("## Valid gradient normalizations are %s.%n", functions);
         writer.format("--gradNorm %s\t# gradient normalization strategy%n", this.gradNorm.toString());
         commentFlag = (this.batchNormFlag ? "" : "# ");
-        writer.format("%s--batch\t# use a batch normalization layer", commentFlag);
+        writer.format("%s--batch\t# use a batch normalization layer%n", commentFlag);
         commentFlag = (this.convolutions.isEmpty() ? "# " : "");
-        writer.format("%s--cnn %s\t# convolution kernel sizes%n", commentFlag, this.convolutions);
-        writer.format("%s--filters %s\t# number of convolution filters to try%n", commentFlag, this.filterSizes);
+        writer.format("%s--cnn %s\t# convolution kernel sizes%n", commentFlag, this.convolutions.original());
+        writer.format("%s--filters %s\t# number of convolution filters to try%n", commentFlag, this.filterSizes.original());
         writer.format("%s--sub %d\t# subsampling factor%n", commentFlag, this.subFactor);
-        writer.format("%s--stride %s\t#stride to use for convolution layer%n", commentFlag, this.strides);
+        writer.format("%s--strides %s\t# stride to use for convolution layer%n", commentFlag, this.strides.original());
+        functions = Stream.of(GradientUpdater.Type.values()).map(GradientUpdater.Type::name).collect(Collectors.joining(", "));
+        writer.format("## Valid updater methods are %s.%n", functions);
+        writer.format("--updater %s\t# weight gradient updater method (uses learning rate)%n", this.weightUpdateMethod.toString());
+        writer.format("--bUpdater %s\t# bias gradient updater method (uses update rate)%n", this.biasUpdateMethod.toString());
+        writer.format("--name %s\t# model file name%n", this.modelName);
         commentFlag = (this.rawMode ? "" : "# ");
         writer.format("%s--raw\t# suppress input normalization%n", commentFlag);
         if (this.comment == null)
@@ -628,8 +670,8 @@ public class TrainingProcessor implements ICommand {
                     .seed(this.seed)
                     .activation(activationType)
                     .weightInit(WeightInit.XAVIER)
-                    .biasUpdater(new Sgd(this.biasRate))
-                    .updater(new Adam(this.learnRate))
+                    .biasUpdater(GradientUpdater.create(this.biasUpdateMethod, this.biasRate))
+                    .updater(GradientUpdater.create(this.weightUpdateMethod, this.realLearningRate))
                     .gradientNormalization(this.gradNorm).list();
             // Compute the input type.
             CnnToFeedForwardPreProcessor reshaper = null;
@@ -745,9 +787,8 @@ public class TrainingProcessor implements ICommand {
             String minutes = DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss");
             // Here we save the model.
             if (! runStats.isErrorStop()) {
-                File saveFile = new File(this.modelDir, "model.ser");
-                log.info("Saving model to {}.", saveFile);
-                ModelSerializer.writeModel(model, saveFile, true, normalizer);
+                log.info("Saving model to {}.", this.modelName);
+                ModelSerializer.writeModel(model, this.modelName, true, normalizer);
             }
             // Display the configuration.
             String regularization;
@@ -774,12 +815,14 @@ public class TrainingProcessor implements ICommand {
                             "%n=========================== Parameters ===========================%n" +
                             "     iterations  = %12d, batch size    = %12d%n" +
                             "     test size   = %12d, seed number   = %12d%n" +
-                            "     learn rate  = %12e, bias rate     = %12g%n" +
                             "     subsampling = %12d%n" +
                             "     --------------------------------------------------------%n" +
                             "     Training set strategy is %s.%n" +
                             "     Regularization method is %s with factor %g.%n" +
                             "     Gradient normalization strategy is %s.%n" +
+                            "     Bias update method is %s with coefficient %g.%n" +
+                            "     Weight initialization method is %s.%n" +
+                            "     Weight update method is %s with learning rate %g.%n" +
                             "     Input layer activation type is %s.%n" +
                             "     Hidden layer activation type is %s.%n" +
                             "     Output layer activation type is %s.%n" +
@@ -787,8 +830,9 @@ public class TrainingProcessor implements ICommand {
                             "     %s minutes to run %d %s (best was %d), with %d score bounces.%n" +
                             "     %d models saved.",
                            this.iterations, this.batchSize, this.testSize, this.seed,
-                           this.learnRate, this.biasRate, this.subFactor,
-                           this.method.toString(), regularization, regFactor, this.gradNorm.toString(),
+                           this.subFactor, this.method.toString(), regularization, regFactor,
+                           this.gradNorm.toString(), this.biasUpdateMethod.toString(), this.biasRate,
+                           this.weightInitMethod.toString(), this.weightUpdateMethod.toString(), this.learnRate,
                            this.initActivationType.toString(), this.activationType.toString(),
                            outActivation.toString(), this.lossFunction.toString(),
                            minutes, runStats.getEventCount(), myTrainer.eventsName(),

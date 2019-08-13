@@ -79,7 +79,7 @@ public class EpochTrainer extends Trainer {
                     numSaves++;
                     uselessIterations = 0;
                 } else {
-                    saveFlag = String.format("  Best was %g.", bestAccuracy);
+                    saveFlag = String.format("  Best was %g in epoch %d.", bestAccuracy, bestIter);
                     uselessIterations++;
                 }
                 log.info("Score after epoch {} is {}. {} seconds to process {} batches. Accuracy = {}.{}",

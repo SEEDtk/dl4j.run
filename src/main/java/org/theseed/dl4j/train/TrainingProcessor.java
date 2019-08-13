@@ -8,7 +8,6 @@ import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -166,26 +165,28 @@ public class TrainingProcessor implements ICommand {
     /** input file reader */
     private TabbedDataSetReader reader;
     /** array of labels */
-    List<String> labels;
+    private List<String> labels;
     /** testing set */
-    DataSet testingSet;
+    private DataSet testingSet;
     /** number of input channels */
-    int channelCount;
+    private int channelCount;
     /** TRUE if we have channel input */
-    boolean channelMode;
+    private boolean channelMode;
     /** list of convolution widths */
-    IntegerList convolutions;
+    private IntegerList convolutions;
     /** list of hidden layer widths */
-    IntegerList denseLayers;
+    private IntegerList denseLayers;
     /** list of filter counts */
-    IntegerList filterSizes;
+    private IntegerList filterSizes;
     /** list of strides */
-    IntegerList strides;
+    private IntegerList strides;
     /** actual updater learning rate */
-    double realLearningRate;
+    private double realLearningRate;
+    /** best accuracy */
+    private double bestAccuracy;
 
     /** logging facility */
-    private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
+    public static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
 
     // COMMAND LINE
 
@@ -330,10 +331,6 @@ public class TrainingProcessor implements ICommand {
             usage="early stop max useless iterations (0 to turn off)")
     private int earlyStop;
 
-    /** model directory */
-    @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
-    private File modelDir;
-
     /** bias updater algorithm */
     @Option(name="--bUpdater", usage="bias gradient updater algorithm")
     private GradientUpdater.Type biasUpdateMethod;
@@ -345,6 +342,11 @@ public class TrainingProcessor implements ICommand {
     /** weight updater algorithm */
     @Option(name="--updater", usage="weight gradient updater algorithm")
     private GradientUpdater.Type weightUpdateMethod;
+
+    /** model directory */
+    @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
+    private File modelDir;
+
 
     /**
      * Class to describe a fitting run.
@@ -479,6 +481,8 @@ public class TrainingProcessor implements ICommand {
         this.weightUpdateMethod = GradientUpdater.Type.ADAM;
         this.modelName = null;
         this.comment = null;
+        // Clear the accuracy value.
+        this.bestAccuracy = 0.0;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -852,6 +856,7 @@ public class TrainingProcessor implements ICommand {
                 parms.append(String.format("%n     Input uses channel vectors."));
             if (runStats.isErrorStop()) {
                 parms.append(String.format("%n%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW."));
+                this.bestAccuracy = 0;
             } else {
                 //evaluate the model on the test set: compare the output to the actual
                 Evaluation eval = Trainer.evaluateModel(model, this.testingSet, this.labels);
@@ -863,11 +868,13 @@ public class TrainingProcessor implements ICommand {
                     double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getActualTotal(i);
                     parms.append(String.format("%n%-10s actuals are correctly predicted   %6.2f%% of the time.", this.labels.get(i), success));
                 }
-                // We want the success rate for each prediction.  This is correctly-predicted / total.
+                // We also want the success rate for each prediction.  This is correctly-predicted / total.
                 for (int i = 0; i < this.labels.size(); i++) {
                     double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getPredictedTotal(i);
                     parms.append(String.format("%n%-10s predictions correspond to actuals %6.2f%% of the time.", this.labels.get(i), success));
                 }
+                // Finally, save the accuracy.
+                this.bestAccuracy = eval.accuracy();
             }
             // Add the summary.
             parms.append(model.summary(inputShape));
@@ -880,9 +887,16 @@ public class TrainingProcessor implements ICommand {
                 trialWriter.print(this.comment);
             trialWriter.println(parms);
             trialWriter.close();
-        } catch (IOException e) {
-            throw new UncheckedIOException("Error in training.", e);
+        } catch (Exception e) {
+            log.error("Error in training: {}", e.getMessage());
         }
+    }
+
+    /**
+     * @return the accuracy of the best epoch
+     */
+    public double getAccuracy() {
+        return bestAccuracy;
     }
 
     /**

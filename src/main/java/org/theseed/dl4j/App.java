@@ -8,17 +8,19 @@ import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.theseed.dl4j.predict.PredictionProcessor;
+import org.theseed.dl4j.train.SearchProcessor;
 import org.theseed.dl4j.train.TrainingProcessor;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
 
 /**
  * Main entry point for the Deep Learning utility.  The first parameter is a command-- use "train" to
- * train a model with a training set.  Use "predict" to apply a model to a prediction set.
+ * train a model with a training set.  Use "predict" to apply a model to a prediction set.  Use
+ * "search" to test multiple model configurations.
  *
- * (Currently only "train" is implemented.)  If the command is followed by an equal sign, then the
- * part after the equal sign should be a file name.  The parameters will be read from the file.
- * Otherwise, the parameters are taken from the remainder of the command line.
+ * If the command is followed by an equal sign, then the part after the equal sign should be a file name.
+ * The parameters will be read from the file. Otherwise, the parameters are taken from the remainder of
+ * the command line.
  *
  */
 public class App
@@ -55,6 +57,10 @@ public class App
                 break;
             case "predict" :
                 runObject = new PredictionProcessor();
+                success = execute(runObject, args);
+                break;
+            case "search" :
+                runObject = new SearchProcessor();
                 success = execute(runObject, args);
                 break;
             case "--help" :

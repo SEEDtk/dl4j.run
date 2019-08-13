@@ -19,8 +19,6 @@ import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.nd4j.evaluation.classification.ConfusionMatrix;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
-import org.deeplearning4j.nn.conf.dropout.Dropout;
-import org.deeplearning4j.nn.conf.dropout.GaussianDropout;
 import org.deeplearning4j.nn.conf.inputs.InputType;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
 import org.deeplearning4j.nn.conf.layers.Layer;
@@ -47,6 +45,7 @@ import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.ChannelDataSetReader;
+import org.theseed.dl4j.Regularization;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.dl4j.train.Trainer.Type;
 import org.theseed.utils.ICommand;
@@ -93,9 +92,6 @@ import org.theseed.utils.IntegerList;
  * 		layer, in order; if no hidden layers are specified, a default hidden layer whose
  * 		width is the mean of the input and output widths will be created; a width of 0 creates
  * 		an element-wise multiplication layer
- * -g	Gaussian dropout rate used to prevent overfitting-- a higher value makes the model
- * 		less sensitive and a lower one makes it more sensitive; the default is 0.3.; a value
- * 		of 0 suppresses dropout
  * -u	bias updater coefficient, used to determine the starting speed of the model-- a
  * 		higher value makes the learning faster, a lower value makes it more accurate; the
  * 		default is 0.2
@@ -114,10 +110,9 @@ import org.theseed.utils.IntegerList;
  * --meta		a comma-delimited list of the metadata columns; these columns are ignored during training; the
  * 				default is none
  * --raw		if specified, the data is not normalized
- * --l2			if nonzero, then l2 regularization is used instead of gaussian dropout; the
- * 				value should be the regularization parameter; the default is 0
- * --drop		if nonzero, then regular dropout is used instead of gaussian dropout; the
- * 				default is 0
+ * --regMode	regularization mode-- GAUSS, LINEAR, L2, NONE; the default is GAUSS
+ * --regFactor	regularization factor; a higher value makes the model less sensitive, a lower value
+ * 				more sensitive; the default is 0.3
  * --cnn		if specified, then the input layer will be a convolution layer with the
  * 				specified kernel width; otherwise, it will be a standard dense layer;
  * 				specifying multiple comma-delimited values creates multiple convolution
@@ -184,6 +179,8 @@ public class TrainingProcessor implements ICommand {
     private double realLearningRate;
     /** best accuracy */
     private double bestAccuracy;
+    /** regularization control object */
+    private Regularization regulizer;
 
     /** logging facility */
     public static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
@@ -225,18 +222,13 @@ public class TrainingProcessor implements ICommand {
         this.denseLayers = new IntegerList(layerWidths);
     }
 
-    /** dropout rate to prevent overfitting */
-    @Option(name="-g", aliases={"--gaussRate"}, metaVar="0.5",
-            usage="Gaussian dropout rate")
-    private double gaussRate;
+    /** \regularization factor to prevent overfitting */
+    @Option(name="--regFactor", metaVar="0.5", usage="regularization coefficient/factor")
+    private double regFactor;
 
-    /** linear dropout rate; if not zero, overrides gaussian dropout */
-    @Option(name="--drop", usage="normal (non-gaussian) dropout mode")
-    private double normalDrop;
-
-    /** l2 regularization option */
-    @Option(name="--l2", metaVar="0.2", usage="l2 regularization parameter (replaces gaussian dropout if nonzero)")
-    private double l2Parm;
+    /** regularization mode */
+    @Option(name="--regMode", usage="regularization mode")
+    private Regularization.Mode regMode;
 
     /** maximum number of batches to read, or -1 to read them all */
     @Option(name="-x", aliases={"--maxBatches"}, metaVar="6",
@@ -453,18 +445,17 @@ public class TrainingProcessor implements ICommand {
         this.batchSize = 500;
         this.testSize = 2000;
         this.denseLayers = new IntegerList();
-        this.gaussRate = 0.3;
+        this.regFactor = 0.3;
         this.biasRate = 0.2;
         this.learnRate = 1e-3;
         this.maxBatches = Integer.MAX_VALUE;
         this.lossFunction = LossFunctions.LossFunction.MCXENT;
         this.seed = (int) (System.currentTimeMillis() & 0xFFFFF);
         this.trainingFile = null;
-        this.l2Parm = 0;
+        this.regMode = Regularization.Mode.GAUSS;
         this.activationType = Activation.RELU;
         this.initActivationType = Activation.HARDTANH;
         this.gradNorm = GradientNormalization.None;
-        this.normalDrop = 0.0;
         this.convolutions = new IntegerList();
         this.channelMode = false;
         this.subFactor = 1;
@@ -553,6 +544,8 @@ public class TrainingProcessor implements ICommand {
                         this.denseLayers.setDefault((subChannels + this.labels.size() + 1) / 2);
                     }
                 }
+                // Save the regularization configuration.
+                this.regulizer = new Regularization(this.regMode, this.regFactor);
                 // Compute the model file name if it is defaulting.
                 if (this.modelName == null)
                     this.modelName = new File(this.modelDir, "model.ser");
@@ -600,12 +593,10 @@ public class TrainingProcessor implements ICommand {
             writer.format("# --widths %d\t# configure number and widths of hidden layers%n", this.reader.getWidth());
         else
             writer.format("--widths %s\t# configure hidden layers%n", this.denseLayers.original());
-        commentFlag = ((this.normalDrop > 0 || this.l2Parm > 0) ? "#" : "");
-        writer.format("%s--gaussRate %g\t# gaussian dropout rate (0 to turn off dropout)%n", commentFlag, this.gaussRate);
-        commentFlag = ((this.l2Parm > 0  || this.normalDrop == 0) ? "# " : "");
-        writer.format("%s--drop %g\t# linear dropout rate (overrides gaussian)%n", commentFlag, this.normalDrop);
-        commentFlag = ((this.l2Parm == 0) ? "# " : "");
-        writer.format("%s--l2 %g\t# L2 regularization factor (overrides dropouts)%n", commentFlag, this.l2Parm);
+        functions = Stream.of(Regularization.Mode.values()).map(Regularization.Mode::name).collect(Collectors.joining(", "));
+        writer.format("## Valid regularization modes are %s.%n", functions);
+        writer.format("--regMode %s\t# regularization mode%n", this.regMode);
+        writer.format("--regFactor %g\t# regularization coefficient/factor%n", this.regFactor);
         if (this.maxBatches == Integer.MAX_VALUE)
             writer.println("# --maxBatches 10\t# limit the number of input batches");
         else
@@ -754,13 +745,8 @@ public class TrainingProcessor implements ICommand {
                     log.info("Creating hidden layer with input width {} and {} outputs.", inWidth, outWidth);
                     DenseLayer.Builder builder = new DenseLayer.Builder().nIn(inWidth).nOut(outWidth);
                     // Do the regularization.
-                    if (this.l2Parm > 0) {
-                        builder.l2(this.l2Parm);
-                    } else if (this.normalDrop > 0) {
-                        builder.dropOut(new Dropout(this.normalDrop));
-                    } else if (this.gaussRate > 0) {
-                        builder.dropOut(new GaussianDropout(this.gaussRate));
-                    }
+                    this.regulizer.apply(builder);
+                    // Build the layer.
                     newLayer = builder.build();
                 }
                 // Add the layer.
@@ -795,25 +781,6 @@ public class TrainingProcessor implements ICommand {
                 ModelSerializer.writeModel(model, this.modelName, true, normalizer);
             }
             // Display the configuration.
-            String regularization;
-            double regFactor;
-            if (this.batchNormFlag) {
-                regularization = "Batch normalization";
-                regFactor = 0.0;
-            }
-            if (this.l2Parm > 0) {
-                regularization = "L2";
-                regFactor = this.l2Parm;
-            } else if (this.normalDrop > 0) {
-                regularization = "Linear dropout";
-                regFactor = this.normalDrop;
-            } else if (this.gaussRate > 0) {
-                regularization = "Gauss dropout";
-                regFactor = this.gaussRate;
-            } else {
-                regularization = "None";
-                regFactor = 0.0;
-            }
             StringBuilder parms = new StringBuilder();
             parms.append(String.format(
                             "%n=========================== Parameters ===========================%n" +
@@ -822,7 +789,7 @@ public class TrainingProcessor implements ICommand {
                             "     subsampling = %12d%n" +
                             "     --------------------------------------------------------%n" +
                             "     Training set strategy is %s.%n" +
-                            "     Regularization method is %s with factor %g.%n" +
+                            "     Regularization method is %s.%n" +
                             "     Gradient normalization strategy is %s.%n" +
                             "     Bias update method is %s with coefficient %g.%n" +
                             "     Weight initialization method is %s.%n" +
@@ -834,7 +801,7 @@ public class TrainingProcessor implements ICommand {
                             "     %s minutes to run %d %s (best was %d), with %d score bounces.%n" +
                             "     %d models saved.",
                            this.iterations, this.batchSize, this.testSize, this.seed,
-                           this.subFactor, this.method.toString(), regularization, regFactor,
+                           this.subFactor, this.method.toString(), this.regulizer,
                            this.gradNorm.toString(), this.biasUpdateMethod.toString(), this.biasRate,
                            this.weightInitMethod.toString(), this.weightUpdateMethod.toString(), this.learnRate,
                            this.initActivationType.toString(), this.activationType.toString(),
@@ -865,13 +832,19 @@ public class TrainingProcessor implements ICommand {
                 ConfusionMatrix<Integer> matrix = eval.getConfusion();
                 // We want the success rate for each label.  This is correctly-predicted / actual.
                 for (int i = 0; i < this.labels.size(); i++) {
-                    double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getActualTotal(i);
-                    parms.append(String.format("%n%-10s actuals are correctly predicted   %6.2f%% of the time.", this.labels.get(i), success));
+                    int count = matrix.getActualTotal(i);
+                    if (count > 0) {
+                        double success = ((double) matrix.getCount(i, i)) * 100 / count;
+                        parms.append(String.format("%n%-10s actuals are correctly predicted   %6.2f%% of the time.", this.labels.get(i), success));
+                    }
                 }
                 // We also want the success rate for each prediction.  This is correctly-predicted / total.
                 for (int i = 0; i < this.labels.size(); i++) {
-                    double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getPredictedTotal(i);
-                    parms.append(String.format("%n%-10s predictions correspond to actuals %6.2f%% of the time.", this.labels.get(i), success));
+                    int count = matrix.getPredictedTotal(i);
+                    if (count > 0) {
+                        double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getPredictedTotal(i);
+                        parms.append(String.format("%n%-10s predictions correspond to actuals %6.2f%% of the time.", this.labels.get(i), success));
+                    }
                 }
                 // Finally, save the accuracy.
                 this.bestAccuracy = eval.accuracy();

@@ -80,7 +80,7 @@ public class App
             }
             if (! success) exitCode = 255;
         } catch (Exception e) {
-            System.err.println(e.getMessage());
+            e.printStackTrace();
             exitCode = 255;
         }
         // Force cleanup.

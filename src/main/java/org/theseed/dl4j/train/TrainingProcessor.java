@@ -851,18 +851,31 @@ public class TrainingProcessor implements ICommand {
             }
             // Add the summary.
             parms.append(model.summary(inputShape));
-            log.info(parms.toString());
-            // Open the trials log in append mode and write the information about this run.
-            File trials = new File(modelDir, "trials.log");
-            PrintWriter trialWriter = new PrintWriter(new FileWriter(trials, true));
-            trialWriter.println("******************************************************************");
-            if (this.comment != null)
-                trialWriter.print(this.comment);
-            trialWriter.println(parms);
-            trialWriter.close();
+            String report = parms.toString();
+            log.info(report);
+            writeTrialReport(this.comment, report);
         } catch (Exception e) {
             log.error("Error in training: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Write a report to the trial log.
+     *
+     * @param label	heading comment, if any
+     * @param report	text of the report to write, with internal new-lines
+     *
+     * @throws IOException
+     */
+    public void writeTrialReport(String label, String report) throws IOException {
+        // Open the trials log in append mode and write the information about this run.
+        File trials = new File(modelDir, "trials.log");
+        PrintWriter trialWriter = new PrintWriter(new FileWriter(trials, true));
+        trialWriter.println("******************************************************************");
+        if (label != null)
+            trialWriter.print(label);
+        trialWriter.println(report);
+        trialWriter.close();
     }
 
     /**

@@ -13,6 +13,7 @@ import java.util.List;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.text.TextStringBuilder;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
@@ -135,16 +136,28 @@ public class SearchProcessor implements ICommand {
         // Compute the total width.  We have 6 at the beginning and an extra space before each column.
         int totWidth = Arrays.stream(widths).sum() + widths.length + 6;
         String boundary = StringUtils.repeat('=', totWidth);
-        TrainingProcessor.log.info(boundary);
+        // We will build the report in here.
+        TextStringBuilder buffer = new TextStringBuilder((totWidth + 2) * (data.size() + 4));
+        buffer.appendln("");
+        buffer.appendln(boundary);
         // Write out the heading line.
-        TrainingProcessor.log.info(this.writeLine(widths, totWidth, "#", data.get(0)));
+        buffer.appendln(this.writeLine(widths, totWidth, "#", data.get(0)));
         // Write out a space.
-        TrainingProcessor.log.info("");
+        buffer.appendln("");
         // Write out the data lines.
         for (int i = 1; i < data.size(); i++)
-            TrainingProcessor.log.info(this.writeLine(widths, totWidth, Integer.toString(i), data.get(i)));
+            buffer.appendln(this.writeLine(widths, totWidth, Integer.toString(i), data.get(i)));
         // Write out a trailer line.
-        TrainingProcessor.log.info(boundary);
+        buffer.appendln(boundary);
+        // Write it to the output log.
+        String report = buffer.toString();
+        TrainingProcessor.log.info(report);
+        // Write it to the trial file.
+        try {
+            processor.writeTrialReport("Summary of Search-Mode Results", report);
+        } catch (IOException e) {
+            System.err.println("Error writing trial.log:" + e.getMessage());
+        }
     }
 
 

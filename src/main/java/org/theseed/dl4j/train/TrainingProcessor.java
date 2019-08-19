@@ -126,6 +126,11 @@ import org.theseed.utils.IntegerList;
  * --updater	update algorithm to use; the default is ADAM
  * --bUpdater	bias update algorithm to use; the default is SGD
  * --name		name for the model file; the default is "model.ser" in the model directory
+ * --other		if specified, it is assumed that category 0 is the negative category; specifying this
+ * 				option triggers additional output metrics
+ * --balanced	specifies balanced hidden layers with the specified number of layers; a value of 0 (the default)
+ * 				turns this option off; any other value overrides "-w"; the layers are in decreasing size
+ * 				order with a near-constant size reduction
  *
  * For a convolution input layer, the following additional parameters are used.
  *
@@ -335,6 +340,14 @@ public class TrainingProcessor implements ICommand {
     @Option(name="--updater", usage="weight gradient updater algorithm")
     private GradientUpdater.Type weightUpdateMethod;
 
+    /** indicates category 0 is negative */
+    @Option(name="--other", usage="show metrics assuming category 0 is a negative result")
+    private boolean otherMode;
+
+    /** use balanced layers */
+    @Option(name="--balanced", metaVar="4", usage="compute balanced layer widths for the specified number of layers")
+    private int balancedLayers;
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -472,6 +485,8 @@ public class TrainingProcessor implements ICommand {
         this.weightUpdateMethod = GradientUpdater.Type.ADAM;
         this.modelName = null;
         this.comment = null;
+        this.otherMode = false;
+        this.balancedLayers = 0;
         // Clear the accuracy value.
         this.bestAccuracy = 0.0;
         // Parse the command line.
@@ -516,6 +531,7 @@ public class TrainingProcessor implements ICommand {
                             this.reader = myReader;
                             log.info("Channel input with {} channels.", this.channelCount);
                         }
+                        // TODO balanced layers
                         // Insure the number of filters or strides is not greater than the number of convolutions.
                         if (! this.convolutions.isEmpty()) {
                             if (this.filterSizes.size() > this.convolutions.size())
@@ -582,6 +598,9 @@ public class TrainingProcessor implements ICommand {
         String commentFlag = "";
         PrintWriter writer = new PrintWriter(outFile);
         writer.format("--col %s\t# input column for class name%n", this.labelCol);
+        commentFlag = (this.otherMode ? "" : "# ");
+        writer.format("%s--other\t# indicates class 0 is a negative condition; per-class accuracies will be displayed%n",
+                commentFlag);
         writer.format("--iter %d\t# number of training iterations per batch%n", this.iterations);
         writer.format("--batchSize %d\t# size of each training batch%n", this.batchSize);
         writer.format("--testSize %d\t# size of the testing set, taken from the beginning of the file%n", this.testSize);
@@ -825,28 +844,37 @@ public class TrainingProcessor implements ICommand {
                 parms.append(String.format("%n%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW."));
                 this.bestAccuracy = 0;
             } else {
-                //evaluate the model on the test set: compare the output to the actual
+                // Now we evaluate the model on the test set: compare the output to the actual
+                // values.
                 Evaluation eval = Trainer.evaluateModel(model, this.testingSet, this.labels);
                 // Output the evaluation.
                 parms.append(eval.stats());
                 ConfusionMatrix<Integer> matrix = eval.getConfusion();
-                // We want the success rate for each label.  This is correctly-predicted / actual.
-                for (int i = 0; i < this.labels.size(); i++) {
-                    int count = matrix.getActualTotal(i);
-                    if (count > 0) {
-                        double success = ((double) matrix.getCount(i, i)) * 100 / count;
-                        parms.append(String.format("%n%-10s actuals are correctly predicted   %6.2f%% of the time.", this.labels.get(i), success));
+                // This last thing is the table of scores for each prediction.  This only makes sense if we have
+                // an "other" mode.
+                if (this.otherMode) {
+                    int actualNegative = matrix.getActualTotal(0);
+                    if (actualNegative == 0) {
+                        parms.append(String.format("%nNo \"%s\" results were found.%n", this.labels.get(0)));
+                    } else {
+                        double specificity = ((double) matrix.getCount(0, 0)) / actualNegative;
+                        parms.append(String.format("%nModel specificity is %11.4f.%n", specificity));
+                    }
+                    parms.append(String.format("%n%-11s %11s %11s %11s %11s%n", "class", "accuracy", "sensitivity", "precision", "fallout"));
+                    parms.append(StringUtils.repeat('-', 59));
+                    // The classification accuracy is 1 - (false negative + false positive) / total,
+                    // sensitivity is true positive / actual positive, precision is true positive / predicted positive,
+                    // and fall-out is false positive / actual negative.
+                    for (int i = 1; i < this.labels.size(); i++) {
+                        String label = this.labels.get(i);
+                        double accuracy = 1 - ((double) (matrix.getCount(0, i) + matrix.getCount(i,  0))) / this.testSize;
+                        String sensitivity = formatRatio(matrix.getCount(i, i), matrix.getActualTotal(i));
+                        String precision = formatRatio(matrix.getCount(i, i), matrix.getPredictedTotal(i));
+                        String fallout = formatRatio(matrix.getCount(0,  i), actualNegative);
+                        parms.append(String.format("%n%-11s %11.4f %11s %11s %11s", label, accuracy, sensitivity, precision, fallout));
                     }
                 }
-                // We also want the success rate for each prediction.  This is correctly-predicted / total.
-                for (int i = 0; i < this.labels.size(); i++) {
-                    int count = matrix.getPredictedTotal(i);
-                    if (count > 0) {
-                        double success = ((double) matrix.getCount(i, i)) * 100 / matrix.getPredictedTotal(i);
-                        parms.append(String.format("%n%-10s predictions correspond to actuals %6.2f%% of the time.", this.labels.get(i), success));
-                    }
-                }
-                // Finally, save the accuracy.
+                // Finally, save the accuracy in case SearchProcessor is running us.
                 this.bestAccuracy = eval.accuracy();
             }
             // Add the summary.
@@ -857,6 +885,22 @@ public class TrainingProcessor implements ICommand {
         } catch (Exception e) {
             log.error("Error in training: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Format a ratio for display in the evaluation metrics matrix.
+     *
+     * @param count		numerator
+     * @param total		denominator
+     *
+     * @return a formatted fraction, or an empty string if the denominator is 9
+     */
+    private static String formatRatio(int count, int total) {
+        String retVal = "";
+        if (total > 0) {
+            retVal = String.format("%11.4f", ((double) count) / total);
+        }
+        return retVal;
     }
 
     /**

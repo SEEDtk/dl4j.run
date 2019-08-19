@@ -74,6 +74,9 @@ public class App
                 System.err.println("Command code \"predict\":");
                 runObject = new PredictionProcessor();
                 execute(runObject, args);
+                System.err.println("Command code \"search\":");
+                runObject = new SearchProcessor();
+                execute(runObject, args);
                 break;
             default :
                 throw new IllegalArgumentException("Invalid command code " + command[0] + ".");

@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.inputs.InputType;
 import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
@@ -29,6 +30,7 @@ import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.learning.config.Adam;
 import org.nd4j.linalg.learning.config.Sgd;
 import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
+import org.theseed.dl4j.train.LayerWidths;
 
 /**
  * Unit test for simple App.
@@ -190,6 +192,32 @@ public class AppTest extends TestCase
         model.init();
         model.fit(set1); // Here is where we crash if we are wrong.
         System.out.println("Success.");
+    }
+
+    /**
+     * Test the layer widths computer
+     */
+    public void testLayerWidths() {
+    	LayerWidths widthComputer = new LayerWidths(50, 4);
+    	assertThat(widthComputer.getInWidth(), equalTo(50));
+    	assertThat(widthComputer.getOutWidth(), equalTo(50));
+    	assertThat(widthComputer.getChannels(), equalTo(4));
+    	widthComputer.applyConvolution(3, 2, 10);
+    	assertThat(widthComputer.getInWidth(), equalTo(50));
+    	assertThat(widthComputer.getOutWidth(), equalTo(24));
+    	assertThat(widthComputer.getChannels(), equalTo(10));
+    	widthComputer.applySubsampling(2);
+    	assertThat(widthComputer.getInWidth(), equalTo(24));
+    	assertThat(widthComputer.getOutWidth(), equalTo(12));
+    	assertThat(widthComputer.getChannels(), equalTo(10));
+    	widthComputer.flatten();
+    	assertThat(widthComputer.getOutWidth(), equalTo(120));
+    	assertThat(widthComputer.getChannels(), equalTo(1));
+    	Integer[] layers = ArrayUtils.toObject(widthComputer.balancedLayers(4, 3));
+    	assertThat(layers, arrayContaining(96, 72, 49, 26));
+    	widthComputer.applyFeedForward(96);
+    	assertThat(widthComputer.getInWidth(), equalTo(120));
+    	assertThat(widthComputer.getOutWidth(), equalTo(96));
     }
 
 }

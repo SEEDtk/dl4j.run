@@ -531,7 +531,6 @@ public class TrainingProcessor implements ICommand {
                             this.reader = myReader;
                             log.info("Channel input with {} channels.", this.channelCount);
                         }
-                        // TODO balanced layers
                         // Insure the number of filters or strides is not greater than the number of convolutions.
                         if (! this.convolutions.isEmpty()) {
                             if (this.filterSizes.size() > this.convolutions.size())
@@ -539,25 +538,40 @@ public class TrainingProcessor implements ICommand {
                             if (this.strides.size() > this.convolutions.size())
                                 throw new IllegalArgumentException("Cannot have more strides than convolution layers.");
                         }
-                        // Verify that the subfactor is in range.
-                        int subChannels = this.reader.getWidth();
-                        int strideFactor = this.strides.first();
-                        if (! this.convolutions.isEmpty() && this.subFactor > 1) {
+                        // Verify that the subfactor is in range. This requires us to compute
+                        // the effect of the various input layers.  We need this for the
+                        // balanced-layer computation, too.
+                        LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(),
+                        		this.channelCount);
+                        if (! this.convolutions.isEmpty()) {
+                            int strideFactor = this.strides.first();
+                            int filters = this.filterSizes.first();
                             // Compute the width after the last convolution.
                             for (int cWidth : this.convolutions) {
-                                subChannels = (subChannels - cWidth) / strideFactor + 1;
+                                widthComputer.applyConvolution(cWidth, strideFactor, filters);
                                 strideFactor = this.strides.softNext();
+                                filters = this.filterSizes.softNext();
                             }
-                            if (subChannels <= this.subFactor) {
+                            if (widthComputer.getOutWidth() <= this.subFactor) {
                                 throw new IllegalArgumentException("Subsampling factor must be less than " +
-                                        subChannels + " in this configuration.");
+                                        widthComputer.getOutWidth() + " in this configuration.");
+                            } else if (this.subFactor > 1) {
+                            	widthComputer.applySubsampling(this.subFactor);
                             }
-                            // Compute the number of inputs we expect to remain after the subsampling layer.
-                            subChannels = (subChannels - this.subFactor) / this.subFactor + 1;
                         }
-                        // Compute the default hidden layer width. Note the default is only set if the list
-                        // is currently empty.
-                        this.denseLayers.setDefault((subChannels + this.labels.size() + 1) / 2);
+                    	// Flatten any leftover channel depth.
+                    	widthComputer.flatten();
+                        // If we have balanced layers, we need to compute the hidden layer widths
+                        // here.
+                        if (this.balancedLayers > 0) {
+                        	// Compute the balanced layer widths.
+                        	int[] widths = widthComputer.balancedLayers(this.balancedLayers, this.labels.size());
+                        	this.denseLayers = new IntegerList(widths);
+                        } else {
+	                        // Compute the default hidden layer width. Note the default is only set if the list
+	                        // is currently empty.
+	                        this.denseLayers.setDefault((widthComputer.getOutWidth() + this.labels.size() + 1) / 2);
+                        }
                     }
                 }
                 // Save the regularization configuration.
@@ -677,9 +691,9 @@ public class TrainingProcessor implements ICommand {
                 reader.setNormalizer(normalizer);
             }
             // Now we build the model configuration.
-            int inWidth = this.reader.getWidth();
+            LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(), this.channelCount);
             log.info("Building model configuration with input width {} and {} channels.",
-                    inWidth, this.channelCount);
+                    widthComputer.getInWidth(), widthComputer.getChannels());
             NeuralNetConfiguration.ListBuilder configuration = new NeuralNetConfiguration.Builder()
                     .seed(this.seed)
                     .activation(activationType)
@@ -689,54 +703,53 @@ public class TrainingProcessor implements ICommand {
                     .gradientNormalization(this.gradNorm).list();
             // Compute the input type.
             CnnToFeedForwardPreProcessor reshaper = null;
-            InputType inputShape = InputType.feedForward(inWidth);
+            InputType inputShape = InputType.feedForward(widthComputer.getInWidth());
             if (this.channelMode) {
-                inputShape = InputType.convolutional(1, inWidth, this.channelCount);
+                inputShape = InputType.convolutional(1, widthComputer.getInWidth(),
+                		widthComputer.getChannels());
             } else if (! this.convolutions.isEmpty()) {
-                inputShape = InputType.convolutionalFlat(1, inWidth, 1);
+                inputShape = InputType.convolutionalFlat(1, widthComputer.getInWidth(), 1);
             }
             configuration.setInputType(inputShape);
             if (! this.convolutions.isEmpty()) {
                 // Create the convolution layers.  For the first layer, the channel depth is the number
                 // of channels and the output size is the first filter size.
-                int depth = this.channelCount;
                 int convOut = this.filterSizes.first();
                 int strideFactor = this.strides.first();
                 for (int convKernel : this.convolutions) {
-                    log.info("Creating convolution layer with {} inputs.", inWidth);
+                    log.info("Creating convolution layer with {} inputs.", widthComputer.getOutWidth());
                     configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
-                            .nIn(depth).nOut(convOut).kernelSize(1, convKernel)
+                            .nIn(widthComputer.getChannels()).nOut(convOut).kernelSize(1, convKernel)
                             .stride(1, strideFactor).build());
-                    // There is one output column for each examined kernel.  Each column has
-                    // one value per filter in its vector.
-                    inWidth = (inWidth - convKernel) / strideFactor + 1;
-                    // The new depth is the number of filters.
-                    depth = convOut;
+                    // Compute the shape of the this layer's output.
+                    widthComputer.applyConvolution(convKernel, strideFactor, convOut);
+                    // Set up for the next layer.
                     convOut = this.filterSizes.softNext();
                     strideFactor = this.strides.softNext();
                 }
                 if (subFactor > 1) {
-                    log.info("Creating subsampling layer with {} inputs.", inWidth);
+                    log.info("Creating subsampling layer with {} inputs.", widthComputer.getOutWidth());
                     configuration.layer(new SubsamplingLayer.Builder()
                             .kernelSize(1, this.subFactor)
                             .stride(1, this.subFactor).build());
                     // Reduce the input size by the subsampling factor.
-                    inWidth = (inWidth - this.subFactor) / this.subFactor + 1;
+                    widthComputer.applySubsampling(this.subFactor);
                 }
                 // Factor the filter count into the input width because it will be
                 // flattened for the dense layer.
-                inWidth *= convOut;
+                widthComputer.flatten();
             } else {
                 // Not convolution, so our input layer is dense.
                 if (this.channelMode) {
                     // We have a 2D shape, and no automatic input type to flatten it, so we need
-                    // to multiply the input width by the number of channels and set up a flattener.
-                    reshaper = new CnnToFeedForwardPreProcessor(1, inWidth, this.channelCount);
-                    inWidth *= this.channelCount;
+                    // to set up a flattener.
+                    reshaper = new CnnToFeedForwardPreProcessor(1, widthComputer.getOutWidth(),
+                    		widthComputer.getChannels());
+                    widthComputer.flatten();
                 }
-                log.info("Creating feed-forward input layer with width {}.", inWidth);
+                log.info("Creating feed-forward input layer with width {}.", widthComputer.getOutWidth());
                 configuration.layer(new DenseLayer.Builder().activation(this.initActivationType)
-                        .nIn(inWidth).nOut(inWidth)
+                        .nIn(widthComputer.getOutWidth()).nOut(widthComputer.getOutWidth())
                         .build());
             }
             // Add batch normalization if desired.
@@ -744,42 +757,39 @@ public class TrainingProcessor implements ICommand {
                 log.info("Adding batch normalization layer.");
                 configuration.layer(new BatchNormalization.Builder().build());
             }
-            // Compute the default width for the hidden layer.
-            int outputCount = this.labels.size();
-            int outWidth;
             // Compute the hidden layers.
+            int outputCount = this.labels.size();
             for (int layerSize : this.denseLayers) {
                 // The new layer goes in here.
                 Layer newLayer;
                 if (layerSize == 0) {
                     // Here we have an ElementWiseMultiplicationLayer.
-                    outWidth = inWidth;
                     ElementWiseMultiplicationLayer.Builder builder = new ElementWiseMultiplicationLayer.Builder()
-                            .nIn(inWidth).nOut(outWidth);
+                            .nIn(widthComputer.getOutWidth()).nOut(widthComputer.getOutWidth());
                     newLayer = builder.build();
-                    log.info("Creating element-wise mulitplication layer with width {}.", inWidth);
+                    log.info("Creating element-wise mulitplication layer with width {}.", widthComputer.getOutWidth());
                 } else {
                     // Here we have a DenseLayer.
-                    outWidth = layerSize;
-                    log.info("Creating hidden layer with input width {} and {} outputs.", inWidth, outWidth);
-                    DenseLayer.Builder builder = new DenseLayer.Builder().nIn(inWidth).nOut(outWidth);
+                    log.info("Creating hidden layer with input width {} and {} outputs.", widthComputer.getOutWidth(), layerSize);
+                    DenseLayer.Builder builder = new DenseLayer.Builder().nIn(widthComputer.getOutWidth()).nOut(layerSize);
                     // Do the regularization.
                     this.regulizer.apply(builder);
                     // Build the layer.
                     newLayer = builder.build();
+                    // Update the width.
+                    widthComputer.applyFeedForward(layerSize);
                 }
                 // Add the layer.
                 configuration.layer(newLayer);
-                // Set up for the next one.
-                inWidth = outWidth;
             }
             // Add the output layer.
             Activation outActivation = (this.lossFunction == LossFunctions.LossFunction.XENT ?
                     Activation.SIGMOID : Activation.SOFTMAX);
-            log.info("Creating output layer with input width {} and {} outputs.", inWidth, outputCount);
+            log.info("Creating output layer with input width {} and {} outputs.", widthComputer.getOutWidth(),
+            		outputCount);
             configuration.layer(new OutputLayer.Builder(this.lossFunction)
                             .activation(outActivation)
-                            .nIn(inWidth).nOut(outputCount).build());
+                            .nIn(widthComputer.getOutWidth()).nOut(outputCount).build());
             // Add the preprocessor if we need one.
             if (reshaper != null)
                 configuration.inputPreProcessor(0, reshaper);

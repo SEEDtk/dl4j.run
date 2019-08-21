@@ -262,29 +262,61 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
     }
 
     /**
-     * This is the default method for formatting features into an example row.  Each input column
-     * is converted to a floating-point number.
+     * This is the method for formatting features into an example row.  Each input column
+     * is converted to a vector of floating-point numbers.
      *
      * @param record	record containing the input strings
      *
      * @return an array representing a single feature
      */
     protected INDArray formatFeature(Entry record) {
-        double[] actual = new double[this.getWidth()];
+        // Create the output array:  one row for each channel (depth), one column for each input column, and a unit height in the middle.
+        int[] indices = new int[] { this.getChannels(), 1, this.getWidth() };
+        NDArray retVal = new NDArray(indices);
+        // Set the indices for use below.
+        indices[1] = 0;
         for (int i = 0; i < this.getWidth(); i++) {
-            actual[i] = Double.parseDouble(record.feature[i]);
+            indices[2] = i;
+            double[] vector = this.stringToVector(record.feature[i]);
+            for (int j = 0; j < this.getChannels(); j++) {
+                indices[0] = j;
+                retVal.putScalar(indices, vector[j]);
+            }
         }
-        return Nd4j.create(actual);
+        return retVal;
     }
 
     /**
-     * This is the default method for pre-allocating the feature array.  It is two-dimensional,
-     * one column per input column, one row per input record.
+     * Convert a column string to a floating-point vector to be put into the output feature.
+     *
+     * @param string	input string
+     *
+     * @return	a vector containing the feature data; the default is a vector of one element
+     */
+    protected double[] stringToVector(String string) {
+        double[] retVal = new double[1];
+        retVal[0] = Double.valueOf(string);
+        return retVal;
+    }
+
+    /**
+     * @return the number of channels for this dataset; the default is 1
+     */
+    protected int getChannels() {
+        return 1;
+    }
+
+    /**
+     * This is the default method for pre-allocating the feature array.  It is four-dimensional,
+     * one column per input column, one row per input record, and unit dimensions for the height
+     * and channel size.
      *
      * @return an empty feature array for the output
      */
     protected NDArray createFeatureArray() {
-        return new NDArray(this.buffer.size(), this.getWidth());
+        int[] shape = new int[] { this.buffer.size(), 1, 1,
+                this.getWidth() };
+        return new NDArray(shape);
     }
 
     /**

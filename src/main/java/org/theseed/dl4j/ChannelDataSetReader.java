@@ -9,7 +9,6 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 
-import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.cpu.nativecpu.NDArray;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.io.TabbedLineReader.Line;
@@ -147,31 +146,6 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
         this.channels = value1.length;
     }
 
-    /**
-     * This is the default method for formatting features into an example row.  Each input column
-     * is converted to a floating-point number.
-     *
-     * @param record	record containing the input strings
-     *
-     * @return an array representing a single feature
-     */
-    @Override
-    protected INDArray formatFeature(Entry record) {
-        // Create the output array:  one row for each channel (depth), one column for each input column, and a unit height in the middle.
-        int[] indices = new int[] { this.channels, 1, this.getWidth() };
-        NDArray retVal = new NDArray(indices);
-        // Set the indices for use below.
-        indices[1] = 0;
-        for (int i = 0; i < this.getWidth(); i++) {
-            indices[2] = i;
-            double[] vector = this.channelMap.get(record.feature[i]);
-            for (int j = 0; j < this.channels; j++) {
-                indices[0] = j;
-                retVal.putScalar(indices, vector[j]);
-            }
-        }
-        return retVal;
-    }
 
     /**
      * This is the default method for pre-allocating the feature array.  It is two-dimensional,
@@ -184,6 +158,15 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
         int[] shape = new int[] { this.buffer.size(), this.channels, 1,
                 this.getWidth() };
         return new NDArray(shape);
+    }
+
+    /**
+     * @return the vector of values corresponding to the specified data string
+     *
+     * @param string	input string to convert
+     */
+    protected double[] stringToVector(String string) {
+        return this.channelMap.get(string);
     }
 
     /**
@@ -214,6 +197,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
     /**
      * @return the number of input channels
      */
+    @Override
     public int getChannels() {
         return this.channels;
     }

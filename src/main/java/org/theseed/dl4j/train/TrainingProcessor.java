@@ -21,6 +21,7 @@ import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.inputs.InputType;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.LSTM;
 import org.deeplearning4j.nn.conf.layers.Layer;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
 import org.deeplearning4j.nn.conf.layers.SubsamplingLayer;
@@ -45,7 +46,9 @@ import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.ChannelDataSetReader;
+import org.theseed.dl4j.CnnToRnnSequencePreprocessor;
 import org.theseed.dl4j.Regularization;
+import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.dl4j.train.Trainer.Type;
 import org.theseed.utils.ICommand;
@@ -116,6 +119,9 @@ import org.theseed.utils.IntegerList;
  * --cnn		if specified, then the input layer will be a convolution layer with the
  * 				specified kernel width; otherwise, it will be a standard dense layer;
  * 				specifying multiple comma-delimited values creates multiple convolution
+ * 				layers
+ * --lstm		if specified, then the specified number of LSTM input layers will be
+ * 				put into the model; if convolution layers are specified, they will preceed the LSTM
  * 				layers
  * --init		activation type for the input layer; the default is HARDTANH
  * --comment	a comment to display at the beginning of the trial log
@@ -290,6 +296,10 @@ public class TrainingProcessor implements ICommand {
     private void setConvolution(String cnn) {
         this.convolutions = new IntegerList(cnn);
     }
+
+    /** LSTM layers */
+    @Option(name="--lstm", metaVar="50", usage="graves LSTM layers, specifying output size of each layer")
+    private int lstmLayers;
 
     /** subsampling layer */
     @Option(name="--sub", metaVar="2", usage="kernel/stride of subsampling layer (if any)")
@@ -470,6 +480,7 @@ public class TrainingProcessor implements ICommand {
         this.initActivationType = Activation.HARDTANH;
         this.gradNorm = GradientNormalization.None;
         this.convolutions = new IntegerList();
+        this.lstmLayers = 0;
         this.channelMode = false;
         this.subFactor = 1;
         this.filterSizes = new IntegerList("1");
@@ -542,7 +553,7 @@ public class TrainingProcessor implements ICommand {
                         // the effect of the various input layers.  We need this for the
                         // balanced-layer computation, too.
                         LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(),
-                        		this.channelCount);
+                                this.channelCount);
                         if (! this.convolutions.isEmpty()) {
                             int strideFactor = this.strides.first();
                             int filters = this.filterSizes.first();
@@ -552,25 +563,27 @@ public class TrainingProcessor implements ICommand {
                                 strideFactor = this.strides.softNext();
                                 filters = this.filterSizes.softNext();
                             }
-                            if (widthComputer.getOutWidth() <= this.subFactor) {
+                            if (widthComputer.getOutWidth() < 1) {
+                                throw new IllegalArgumentException("Convolution stride is too big, output width less than 1.");
+                            } else if (widthComputer.getOutWidth() <= this.subFactor) {
                                 throw new IllegalArgumentException("Subsampling factor must be less than " +
                                         widthComputer.getOutWidth() + " in this configuration.");
                             } else if (this.subFactor > 1) {
-                            	widthComputer.applySubsampling(this.subFactor);
+                                widthComputer.applySubsampling(this.subFactor);
                             }
                         }
-                    	// Flatten any leftover channel depth.
-                    	widthComputer.flatten();
+                        // Flatten any leftover channel depth.
+                        widthComputer.flatten();
                         // If we have balanced layers, we need to compute the hidden layer widths
                         // here.
                         if (this.balancedLayers > 0) {
-                        	// Compute the balanced layer widths.
-                        	int[] widths = widthComputer.balancedLayers(this.balancedLayers, this.labels.size());
-                        	this.denseLayers = new IntegerList(widths);
+                            // Compute the balanced layer widths.
+                            int[] widths = widthComputer.balancedLayers(this.balancedLayers, this.labels.size());
+                            this.denseLayers = new IntegerList(widths);
                         } else {
-	                        // Compute the default hidden layer width. Note the default is only set if the list
-	                        // is currently empty.
-	                        this.denseLayers.setDefault((widthComputer.getOutWidth() + this.labels.size() + 1) / 2);
+                            // Compute the default hidden layer width. Note the default is only set if the list
+                            // is currently empty.
+                            this.denseLayers.setDefault((widthComputer.getOutWidth() + this.labels.size() + 1) / 2);
                         }
                     }
                 }
@@ -657,6 +670,8 @@ public class TrainingProcessor implements ICommand {
         writer.format("%s--filters %s\t# number of convolution filters to try%n", commentFlag, this.filterSizes.original());
         writer.format("%s--sub %d\t# subsampling factor%n", commentFlag, this.subFactor);
         writer.format("%s--strides %s\t# stride to use for convolution layer%n", commentFlag, this.strides.original());
+        commentFlag = (this.lstmLayers == 0 ? "# " : "");
+        writer.format("%s--lstm %d\t# number of long-short-term time series layers%n", commentFlag, this.lstmLayers);
         functions = Stream.of(GradientUpdater.Type.values()).map(GradientUpdater.Type::name).collect(Collectors.joining(", "));
         writer.format("## Valid updater methods are %s.%n", functions);
         writer.format("--updater %s\t# weight gradient updater method (uses learning rate)%n", this.weightUpdateMethod.toString());
@@ -702,15 +717,14 @@ public class TrainingProcessor implements ICommand {
                     .updater(GradientUpdater.create(this.weightUpdateMethod, this.realLearningRate))
                     .gradientNormalization(this.gradNorm).list();
             // Compute the input type.
-            CnnToFeedForwardPreProcessor reshaper = null;
-            InputType inputShape = InputType.feedForward(widthComputer.getInWidth());
-            if (this.channelMode) {
-                inputShape = InputType.convolutional(1, widthComputer.getInWidth(),
-                		widthComputer.getChannels());
-            } else if (! this.convolutions.isEmpty()) {
-                inputShape = InputType.convolutionalFlat(1, widthComputer.getInWidth(), 1);
-            }
+            InputType inputShape = InputType.convolutional(1, widthComputer.getInWidth(),
+                        widthComputer.getChannels());
             configuration.setInputType(inputShape);
+            // This flag will be set if an input layer has been created.  If there is none, we need to put
+            // in a dense layer.
+            boolean inputLayerCreated = false;
+            // This tracks the current layer number.
+            int layerIdx = 0;
             if (! this.convolutions.isEmpty()) {
                 // Create the convolution layers.  For the first layer, the channel depth is the number
                 // of channels and the output size is the first filter size.
@@ -718,7 +732,7 @@ public class TrainingProcessor implements ICommand {
                 int strideFactor = this.strides.first();
                 for (int convKernel : this.convolutions) {
                     log.info("Creating convolution layer with {} inputs.", widthComputer.getOutWidth());
-                    configuration.layer(new ConvolutionLayer.Builder().activation(this.initActivationType)
+                    configuration.layer(layerIdx++, new ConvolutionLayer.Builder().activation(this.initActivationType)
                             .nIn(widthComputer.getChannels()).nOut(convOut).kernelSize(1, convKernel)
                             .stride(1, strideFactor).build());
                     // Compute the shape of the this layer's output.
@@ -729,28 +743,47 @@ public class TrainingProcessor implements ICommand {
                 }
                 if (subFactor > 1) {
                     log.info("Creating subsampling layer with {} inputs.", widthComputer.getOutWidth());
-                    configuration.layer(new SubsamplingLayer.Builder()
+                    configuration.layer(layerIdx++, new SubsamplingLayer.Builder()
                             .kernelSize(1, this.subFactor)
                             .stride(1, this.subFactor).build());
                     // Reduce the input size by the subsampling factor.
                     widthComputer.applySubsampling(this.subFactor);
                 }
-                // Factor the filter count into the input width because it will be
-                // flattened for the dense layer.
-                widthComputer.flatten();
-            } else {
-                // Not convolution, so our input layer is dense.
-                if (this.channelMode) {
-                    // We have a 2D shape, and no automatic input type to flatten it, so we need
-                    // to set up a flattener.
-                    reshaper = new CnnToFeedForwardPreProcessor(1, widthComputer.getOutWidth(),
-                    		widthComputer.getChannels());
-                    widthComputer.flatten();
+                inputLayerCreated = true;
+            }
+            if (this.lstmLayers > 0) {
+                // Here we have LSTM layers.  First, we convert the input.
+                configuration.inputPreProcessor(layerIdx, new CnnToRnnSequencePreprocessor());
+                // Create the layers.
+                for (int i = 0; i < this.lstmLayers; i++) {
+                    log.info("Creating LSTM layer {}.", i + 1);
+                    // Configure the builder.
+                    LSTM.Builder builder = new LSTM.Builder().activation(this.initActivationType)
+                            .nIn(widthComputer.getChannels()).nOut(widthComputer.getChannels());
+                    // Do the regularization.
+                    this.regulizer.apply(builder);
+                    // Add the layer.
+                    configuration.layer(layerIdx++, builder.build());
                 }
+                // Now convert the output.
+                configuration.inputPreProcessor(layerIdx, new RnnSequenceToFeedForwardPreProcessor(widthComputer.getChannels(),
+                        widthComputer.getOutWidth()));
+                inputLayerCreated = true;
+            }
+            if (! inputLayerCreated) {
+                // No multi-dimensional layers, so our input layer is dense.
+                // We have a 2D shape, and no automatic input type to flatten it, so we need
+                // to set up a flattener.
+                configuration.inputPreProcessor(layerIdx, new CnnToFeedForwardPreProcessor(1, widthComputer.getOutWidth(),
+                        widthComputer.getChannels()));
+                widthComputer.flatten();
                 log.info("Creating feed-forward input layer with width {}.", widthComputer.getOutWidth());
-                configuration.layer(new DenseLayer.Builder().activation(this.initActivationType)
+                configuration.layer(layerIdx++, new DenseLayer.Builder().activation(this.initActivationType)
                         .nIn(widthComputer.getOutWidth()).nOut(widthComputer.getOutWidth())
                         .build());
+            } else {
+                // We have multi-dimensional input, so we must flatten the width for the hidden layers.
+                widthComputer.flatten();
             }
             // Add batch normalization if desired.
             if (this.batchNormFlag) {
@@ -786,13 +819,10 @@ public class TrainingProcessor implements ICommand {
             Activation outActivation = (this.lossFunction == LossFunctions.LossFunction.XENT ?
                     Activation.SIGMOID : Activation.SOFTMAX);
             log.info("Creating output layer with input width {} and {} outputs.", widthComputer.getOutWidth(),
-            		outputCount);
+                    outputCount);
             configuration.layer(new OutputLayer.Builder(this.lossFunction)
                             .activation(outActivation)
                             .nIn(widthComputer.getOutWidth()).nOut(outputCount).build());
-            // Add the preprocessor if we need one.
-            if (reshaper != null)
-                configuration.inputPreProcessor(0, reshaper);
             // Here we create the model itself.
             log.info("Creating model.");
             MultiLayerNetwork model = new MultiLayerNetwork(configuration.build());

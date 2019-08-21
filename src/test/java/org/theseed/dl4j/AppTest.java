@@ -72,22 +72,21 @@ public class AppTest extends TestCase
         assertTrue("End of file too soon.", reader.hasNext());
         assertThat("Wrong input width in file.", reader.getWidth(), equalTo(4));
         DataSet set1 = reader.next();
-        assertThat("Wrong number of inputs.", set1.numInputs(), equalTo(4));
         assertThat("Wrong number of classes.", set1.numOutcomes(), equalTo(3));
         assertThat("Wrong batch size.", set1.numExamples(), equalTo(11));
         INDArray features = set1.getFeatures();
         INDArray outputs = set1.getLabels();
-        assertThat("Wrong sl for ex1.", features.getDouble(0, 0), closeTo(6.0, 0.001));
-        assertThat("Wrong sw for ex1.", features.getDouble(0, 1), closeTo(3.4, 0.001));
-        assertThat("Wrong pl for ex1.", features.getDouble(0, 2), closeTo(4.5, 0.001));
-        assertThat("Wrong pw for ex1.", features.getDouble(0, 3), closeTo(1.6, 0.001));
+        assertThat("Wrong sl for ex1.", features.getDouble(0, 1, 1, 0), closeTo(6.0, 0.001));
+        assertThat("Wrong sw for ex1.", features.getDouble(0, 1, 1, 1), closeTo(3.4, 0.001));
+        assertThat("Wrong pl for ex1.", features.getDouble(0, 1, 1, 2), closeTo(4.5, 0.001));
+        assertThat("Wrong pw for ex1.", features.getDouble(0, 1, 1, 3), closeTo(1.6, 0.001));
         assertThat("Wrong label for ex1.", outputs.getDouble(0, 0), equalTo(0.0));
         assertThat("Wrong label aura 1 for ex1.", outputs.getDouble(0, 1), equalTo(1.0));
         assertThat("Wrong label aura 2 for ex1.", outputs.getDouble(0, 2), equalTo(0.0));
-        assertThat("Wrong sl for ex9.", features.getDouble(8, 0), closeTo(5.2, 0.001));
-        assertThat("Wrong sw for ex9.", features.getDouble(8, 1), closeTo(4.1, 0.001));
-        assertThat("Wrong pl for ex9.", features.getDouble(8, 2), closeTo(1.5, 0.001));
-        assertThat("Wrong pw for ex9.", features.getDouble(8, 3), closeTo(0.1, 0.001));
+        assertThat("Wrong sl for ex9.", features.getDouble(8, 1, 1, 0), closeTo(5.2, 0.001));
+        assertThat("Wrong sw for ex9.", features.getDouble(8, 1, 1, 1), closeTo(4.1, 0.001));
+        assertThat("Wrong pl for ex9.", features.getDouble(8, 1, 1, 2), closeTo(1.5, 0.001));
+        assertThat("Wrong pw for ex9.", features.getDouble(8, 1, 1, 3), closeTo(0.1, 0.001));
         assertThat("Wrong label for ex9.", outputs.getDouble(8, 0), equalTo(1.0));
         assertThat("Wrong label aura 1 for ex9.", outputs.getDouble(8, 1), equalTo(0.0));
         assertThat("Wrong label aura 2 for ex9.", outputs.getDouble(8, 2), equalTo(0.0));
@@ -105,20 +104,19 @@ public class AppTest extends TestCase
         inFile = new File("src/test", "samples.tbl");
         reader = new TabbedDataSetReader(inFile, "lcol", labels, Arrays.asList("mcol", "mcol2"));
         set1 = reader.next();
-        assertThat("Wrong number of inputs.", set1.numInputs(), equalTo(3));
         assertThat("Wrong number of classes.", set1.numOutcomes(), equalTo(3));
         assertThat("Wrong batch size.", set1.numExamples(), equalTo(2));
         features = set1.getFeatures();
         outputs = set1.getLabels();
-        assertThat("Wrong col1 for ex1.", features.getDouble(0, 0), closeTo(1.0, 0.001));
-        assertThat("Wrong col2 for ex1.", features.getDouble(0, 1), closeTo(3.0, 0.001));
-        assertThat("Wrong col3 for ex1.", features.getDouble(0, 2), closeTo(6.0, 0.001));
+        assertThat("Wrong col1 for ex1.", features.getDouble(0, 1, 1, 0), closeTo(1.0, 0.001));
+        assertThat("Wrong col2 for ex1.", features.getDouble(0, 1, 1, 1), closeTo(3.0, 0.001));
+        assertThat("Wrong col3 for ex1.", features.getDouble(0, 1, 1, 2), closeTo(6.0, 0.001));
         assertThat("Wrong label for ex1.", outputs.getDouble(0, 0), equalTo(1.0));
         assertThat("Wrong label aura 1 for ex1.", outputs.getDouble(0, 1), equalTo(0.0));
         assertThat("Wrong label aura 2 for ex1.", outputs.getDouble(0, 2), equalTo(0.0));
-        assertThat("Wrong col1 for ex2.", features.getDouble(1, 0), closeTo(1.1, 0.001));
-        assertThat("Wrong col2 for ex2.", features.getDouble(1, 1), closeTo(3.1, 0.001));
-        assertThat("Wrong col3 for ex2.", features.getDouble(1, 2), closeTo(6.1, 0.001));
+        assertThat("Wrong col1 for ex2.", features.getDouble(1, 1, 1, 0), closeTo(1.1, 0.001));
+        assertThat("Wrong col2 for ex2.", features.getDouble(1, 1, 1, 1), closeTo(3.1, 0.001));
+        assertThat("Wrong col3 for ex2.", features.getDouble(1, 1, 1, 2), closeTo(6.1, 0.001));
         assertThat("Wrong label for ex2.", outputs.getDouble(1, 2), equalTo(1.0));
         assertThat("Wrong label aura 1 for ex2.", outputs.getDouble(1, 0), equalTo(0.0));
         assertThat("Wrong label aura 2 for ex2.", outputs.getDouble(1, 1), equalTo(0.0));
@@ -127,13 +125,13 @@ public class AppTest extends TestCase
         set1 = reader.next();
         features = set1.getFeatures();
         List<String> metaData = set1.getExampleMetaData(String.class);
-        assertThat("Wrong col1 for ex1.", features.getDouble(0, 0), closeTo(1.0, 0.001));
-        assertThat("Wrong col2 for ex1.", features.getDouble(0, 1), closeTo(3.0, 0.001));
-        assertThat("Wrong col3 for ex1.", features.getDouble(0, 2), closeTo(6.0, 0.001));
+        assertThat("Wrong col1 for ex1.", features.getDouble(0, 1, 1, 0), closeTo(1.0, 0.001));
+        assertThat("Wrong col2 for ex1.", features.getDouble(0, 1, 1, 1), closeTo(3.0, 0.001));
+        assertThat("Wrong col3 for ex1.", features.getDouble(0, 1, 1, 2), closeTo(6.0, 0.001));
         assertThat("Wrong meta for ex1.", metaData.get(0), equalTo("2.0\t5.0"));
-        assertThat("Wrong col1 for ex2.", features.getDouble(1, 0), closeTo(1.1, 0.001));
-        assertThat("Wrong col2 for ex2.", features.getDouble(1, 1), closeTo(3.1, 0.001));
-        assertThat("Wrong col3 for ex2.", features.getDouble(1, 2), closeTo(6.1, 0.001));
+        assertThat("Wrong col1 for ex2.", features.getDouble(1, 1, 1, 0), closeTo(1.1, 0.001));
+        assertThat("Wrong col2 for ex2.", features.getDouble(1, 1, 1, 1), closeTo(3.1, 0.001));
+        assertThat("Wrong col3 for ex2.", features.getDouble(1, 1, 1, 2), closeTo(6.1, 0.001));
         assertThat("Wrong label for ex2.", metaData.get(1), equalTo("2.1\t5.1"));
     }
 
@@ -198,26 +196,26 @@ public class AppTest extends TestCase
      * Test the layer widths computer
      */
     public void testLayerWidths() {
-    	LayerWidths widthComputer = new LayerWidths(50, 4);
-    	assertThat(widthComputer.getInWidth(), equalTo(50));
-    	assertThat(widthComputer.getOutWidth(), equalTo(50));
-    	assertThat(widthComputer.getChannels(), equalTo(4));
-    	widthComputer.applyConvolution(3, 2, 10);
-    	assertThat(widthComputer.getInWidth(), equalTo(50));
-    	assertThat(widthComputer.getOutWidth(), equalTo(24));
-    	assertThat(widthComputer.getChannels(), equalTo(10));
-    	widthComputer.applySubsampling(2);
-    	assertThat(widthComputer.getInWidth(), equalTo(24));
-    	assertThat(widthComputer.getOutWidth(), equalTo(12));
-    	assertThat(widthComputer.getChannels(), equalTo(10));
-    	widthComputer.flatten();
-    	assertThat(widthComputer.getOutWidth(), equalTo(120));
-    	assertThat(widthComputer.getChannels(), equalTo(1));
-    	Integer[] layers = ArrayUtils.toObject(widthComputer.balancedLayers(4, 3));
-    	assertThat(layers, arrayContaining(96, 72, 49, 26));
-    	widthComputer.applyFeedForward(96);
-    	assertThat(widthComputer.getInWidth(), equalTo(120));
-    	assertThat(widthComputer.getOutWidth(), equalTo(96));
+        LayerWidths widthComputer = new LayerWidths(50, 4);
+        assertThat(widthComputer.getInWidth(), equalTo(50));
+        assertThat(widthComputer.getOutWidth(), equalTo(50));
+        assertThat(widthComputer.getChannels(), equalTo(4));
+        widthComputer.applyConvolution(3, 2, 10);
+        assertThat(widthComputer.getInWidth(), equalTo(50));
+        assertThat(widthComputer.getOutWidth(), equalTo(24));
+        assertThat(widthComputer.getChannels(), equalTo(10));
+        widthComputer.applySubsampling(2);
+        assertThat(widthComputer.getInWidth(), equalTo(24));
+        assertThat(widthComputer.getOutWidth(), equalTo(12));
+        assertThat(widthComputer.getChannels(), equalTo(10));
+        widthComputer.flatten();
+        assertThat(widthComputer.getOutWidth(), equalTo(120));
+        assertThat(widthComputer.getChannels(), equalTo(1));
+        Integer[] layers = ArrayUtils.toObject(widthComputer.balancedLayers(4, 3));
+        assertThat(layers, arrayContaining(96, 72, 49, 26));
+        widthComputer.applyFeedForward(96);
+        assertThat(widthComputer.getInWidth(), equalTo(120));
+        assertThat(widthComputer.getOutWidth(), equalTo(96));
     }
 
 }

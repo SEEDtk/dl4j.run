@@ -92,7 +92,7 @@ import org.theseed.utils.IntegerList;
  * -t	size of the testing set, which is the first batch read and is used to compute
  * 		normalization; the default is 2000
  * -w	the width of each hidden layer; this is a comma-delimited list with one number per
- * 		layer, in order; if no hidden layers are specified (use "" or '' for the parameter),
+ * 		layer, in order; if no hidden layers are specified (use "none" for the parameter),
  * 		the input layers will feed directly into the output; a width of 0 creates an
  * 		element-wise multiplication layer
  * -u	bias updater coefficient, used to determine the starting speed of the model-- a
@@ -230,7 +230,8 @@ public class TrainingProcessor implements ICommand {
     @Option(name="-w", aliases={"--widths"}, metaVar="7",
             usage="width of each hidden layer (0 for element-wise multiplication")
     private void setLayers(String layerWidths) {
-        this.denseLayers = new IntegerList(layerWidths);
+        if (! layerWidths.equalsIgnoreCase("none"))
+            this.denseLayers = new IntegerList(layerWidths);
     }
 
     /** \regularization factor to prevent overfitting */

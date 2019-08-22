@@ -92,9 +92,9 @@ import org.theseed.utils.IntegerList;
  * -t	size of the testing set, which is the first batch read and is used to compute
  * 		normalization; the default is 2000
  * -w	the width of each hidden layer; this is a comma-delimited list with one number per
- * 		layer, in order; if no hidden layers are specified, a default hidden layer whose
- * 		width is the mean of the input and output widths will be created; a width of 0 creates
- * 		an element-wise multiplication layer
+ * 		layer, in order; if no hidden layers are specified (use "" or '' for the parameter),
+ * 		the input layers will feed directly into the output; a width of 0 creates an
+ * 		element-wise multiplication layer
  * -u	bias updater coefficient, used to determine the starting speed of the model-- a
  * 		higher value makes the learning faster, a lower value makes it more accurate; the
  * 		default is 0.2
@@ -580,10 +580,6 @@ public class TrainingProcessor implements ICommand {
                             // Compute the balanced layer widths.
                             int[] widths = widthComputer.balancedLayers(this.balancedLayers, this.labels.size());
                             this.denseLayers = new IntegerList(widths);
-                        } else {
-                            // Compute the default hidden layer width. Note the default is only set if the list
-                            // is currently empty.
-                            this.denseLayers.setDefault((widthComputer.getOutWidth() + this.labels.size() + 1) / 2);
                         }
                     }
                 }
@@ -875,7 +871,10 @@ public class TrainingProcessor implements ICommand {
             }
             if (this.batchNormFlag)
                 parms.append(String.format("%n     Batch normalization applied."));
-            parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
+            if (this.denseLayers.isEmpty())
+                parms.append(String.format("%n     No hidden layers used."));
+            else
+                parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
             if (this.rawMode)
                 parms.append(String.format("%n     Data normalization is turned off."));
             if (this.channelMode)
@@ -923,7 +922,7 @@ public class TrainingProcessor implements ICommand {
             log.info(report);
             writeTrialReport(this.comment, report);
         } catch (Exception e) {
-            log.error("Error in training: {}", e.getMessage());
+            e.printStackTrace(System.err);
         }
     }
 

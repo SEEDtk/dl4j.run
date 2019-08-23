@@ -592,7 +592,7 @@ public class TrainingProcessor implements ICommand {
                 // If the user asked for a configuration file, write it here.
                 if (this.parmFile != null) writeParms(this.parmFile);
                 // Correct the early stop value.
-                if (this.earlyStop == 0) this.earlyStop = this.iterations;
+                if (this.earlyStop == 0) this.earlyStop = Integer.MAX_VALUE;
                 // Correct the Nesterov learning rate for the weight updater.  The default here is 0.1, not 1e-3
                 this.realLearningRate = this.learnRate;
                 if (this.weightUpdateMethod == GradientUpdater.Type.NESTEROVS)

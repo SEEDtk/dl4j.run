@@ -195,7 +195,7 @@ public class PredictionProcessor implements ICommand {
                     }
                 }
                 String prediction = this.labels.get(jBest);
-                System.out.format("%s\t%s\t%8.4g%n", metaDatum, prediction, vBest);
+                System.out.format("%s\t%s\t%12.8g%n", metaDatum, prediction, vBest);
                 // Advance the row index.
                 i++;
             }

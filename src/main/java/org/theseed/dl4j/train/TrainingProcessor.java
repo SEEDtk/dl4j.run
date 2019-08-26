@@ -763,8 +763,7 @@ public class TrainingProcessor implements ICommand {
                     configuration.layer(layerIdx++, builder.build());
                 }
                 // Now convert the output.
-                configuration.inputPreProcessor(layerIdx, new RnnSequenceToFeedForwardPreProcessor(widthComputer.getChannels(),
-                        widthComputer.getOutWidth()));
+                configuration.inputPreProcessor(layerIdx, new RnnSequenceToFeedForwardPreProcessor());
                 inputLayerCreated = true;
             }
             if (! inputLayerCreated) {

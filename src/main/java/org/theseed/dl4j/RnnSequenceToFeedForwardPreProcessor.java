@@ -13,8 +13,6 @@ import org.deeplearning4j.nn.workspace.LayerWorkspaceMgr;
 import org.deeplearning4j.util.TimeSeriesUtils;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.primitives.Pair;
-import org.nd4j.shade.jackson.annotation.JsonCreator;
-import org.nd4j.shade.jackson.annotation.JsonProperty;
 import org.nd4j.linalg.api.shape.Shape;
 
 /**
@@ -36,24 +34,14 @@ public class RnnSequenceToFeedForwardPreProcessor implements InputPreProcessor {
      */
     private static final long serialVersionUID = 1052070337217338101L;
 
-    @JsonCreator
-    public RnnSequenceToFeedForwardPreProcessor(@JsonProperty("numChannels") long numChannels,
-            @JsonProperty("inputWidth") long inputWidth) {
-        this.numChannels = numChannels;
-        this.inputWidth = inputWidth;
-    }
-
     @Override
     public INDArray preProcess(INDArray input, int miniBatchSize, LayerWorkspaceMgr workspaceMgr) {
         if (input.rank() != 3)
             throw new IllegalArgumentException(
                             "Invalid input: expect RNN activations with rank 3 (received input with shape "
                                             + Arrays.toString(input.shape()) + ")");
-        if (input.size(1) != this.numChannels || input.size(2) != this.inputWidth)
-            throw new IllegalArgumentException(
-                    "Invalid input: expect RNN activations with channel size " + this.numChannels
-                            + " and width " + this.inputWidth + " (received input with shape "
-                            + Arrays.toString(input.shape()) + ")");
+        this.numChannels = input.size(1);
+        this.inputWidth = input.size(2);
         //Input: 3d activations (RNN)
         //Output: 2d activations (FF)
 
@@ -75,7 +63,7 @@ public class RnnSequenceToFeedForwardPreProcessor implements InputPreProcessor {
 
     @Override
     public InputPreProcessor clone() {
-        return new RnnSequenceToFeedForwardPreProcessor(this.numChannels, this.inputWidth);
+        return new RnnSequenceToFeedForwardPreProcessor();
     }
 
     @Override

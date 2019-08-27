@@ -47,7 +47,6 @@ public class BatchTrainer extends Trainer {
             retVal.event();
             // Read it in and train with it.
             long startTime = System.currentTimeMillis();
-            log.info("Reading data batch {}.", retVal.getEventCount());
             DataSet trainingData = reader.next();
             for(int i=0; i < processor.getIterations(); i++ ) {
                 model.fit(trainingData);

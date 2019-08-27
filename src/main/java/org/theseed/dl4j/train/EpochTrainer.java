@@ -54,7 +54,6 @@ public class EpochTrainer extends Trainer {
         while (retVal.getEventCount() < processor.getIterations() && ! retVal.isErrorStop() &&
                 uselessIterations < processor.getEarlyStop()) {
             retVal.event();
-            log.info("Processing epoch {}.", retVal.getEventCount());
             long start = System.currentTimeMillis();
             for (DataSet batch : batches) {
                 model.fit(batch);

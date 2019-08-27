@@ -622,6 +622,8 @@ public class TrainingProcessor implements ICommand {
         String commentFlag = "";
         PrintWriter writer = new PrintWriter(outFile);
         writer.format("--col %s\t# input column for class name%n", this.labelCol);
+        commentFlag = (this.metaCols.isEmpty() ? "# " : "");
+        writer.format("%s--meta %s\t# comma-delimited list of meta-data columns%n", commentFlag, this.metaCols);
         commentFlag = (this.otherMode ? "" : "# ");
         writer.format("%s--other\t# indicates class 0 is a negative condition; per-class accuracies will be displayed%n",
                 commentFlag);

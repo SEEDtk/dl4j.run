@@ -130,7 +130,7 @@ import org.theseed.utils.IntegerList;
  * --batch		use batch normalization before the hidden layers
  * --weights	weight initialization algorithm; the default is XAVIER
  * --updater	update algorithm to use; the default is ADAM
- * --bUpdater	bias update algorithm to use; the default is SGD
+ * --bUpdater	bias update algorithm to use; the default is NESTEROVS
  * --name		name for the model file; the default is "model.ser" in the model directory
  * --other		if specified, it is assumed that category 0 is the negative category; specifying this
  * 				option triggers additional output metrics
@@ -154,8 +154,8 @@ import org.theseed.utils.IntegerList;
  * For training method EPOCH, the following options apply:
  *
  * --earlyStop	maximum number of iterations allowed with no accuracy improvement; if this
- * 				limit is exceeded, the run is terminated; the default of 0 causes the value
- * 				to be set equal to the iteration limit, effectively negating the parameter
+ * 				limit is exceeded, the run is terminated; a value of 0 causes the value
+ * 				to be set impossibly high; the default is 200
  *
  * The following are utility options
  *
@@ -491,9 +491,9 @@ public class TrainingProcessor implements ICommand {
         this.parmFile = null;
         this.method = Type.EPOCH;
         this.batchNormFlag = false;
-        this.earlyStop = 0;
+        this.earlyStop = 200;
         this.weightInitMethod = WeightInit.XAVIER;
-        this.biasUpdateMethod = GradientUpdater.Type.SGD;
+        this.biasUpdateMethod = GradientUpdater.Type.NESTEROVS;
         this.weightUpdateMethod = GradientUpdater.Type.ADAM;
         this.modelName = null;
         this.comment = null;
@@ -638,6 +638,7 @@ public class TrainingProcessor implements ICommand {
             writer.format("# --widths %d\t# configure number and widths of hidden layers%n", this.reader.getWidth());
         else
             writer.format("--widths %s\t# configure hidden layers%n", this.denseLayers.original());
+        writer.println("# --balanced 2\t# number of hidden layers (overrides widths)");
         functions = Stream.of(Regularization.Mode.values()).map(Regularization.Mode::name).collect(Collectors.joining(", "));
         writer.format("## Valid regularization modes are %s.%n", functions);
         writer.format("--regMode %s\t# regularization mode%n", this.regMode);

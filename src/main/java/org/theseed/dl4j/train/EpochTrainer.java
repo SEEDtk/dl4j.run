@@ -41,6 +41,7 @@ public class EpochTrainer extends Trainer {
         int batchesRead;
         for (batchesRead = 0; batchesRead < this.processor.getMaxBatches() && reader.hasNext(); batchesRead++)
             batches.add(reader.next());
+        String process = batchesRead + " batches";
         // Initialize the old score for bounce detection.
         double oldScore = Double.MAX_VALUE;
         // Initialize the stats and counters for keeping the best generation.
@@ -57,13 +58,13 @@ public class EpochTrainer extends Trainer {
             }
             double seconds = (double) (System.currentTimeMillis() - start) / 1000;
             double newScore = model.score();
-            if (newScore > oldScore) {
+             if (newScore > oldScore) {
                 retVal.bounce();
-                log.info("Score after epoch {} is {}.  {} seconds to process {} batches.", retVal.getEventCount(),
-                        newScore, seconds, batchesRead);
+                log.info("Score after epoch {} is {}.  {} seconds to process {}.", retVal.getEventCount(),
+                        newScore, seconds, process);
                 retVal.uselessIteration();
             } else try {
-                this.processor.checkModel(model, testingSet, retVal, batchesRead, seconds, newScore, this.eventsName());
+                this.processor.checkModel(model, testingSet, retVal, seconds, newScore, this.eventsName(), process);
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.
                 newScore = Double.NaN;

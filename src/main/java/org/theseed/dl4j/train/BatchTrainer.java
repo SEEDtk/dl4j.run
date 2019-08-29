@@ -42,6 +42,7 @@ public class BatchTrainer extends Trainer {
     public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet) {
         RunStats retVal = new RunStats(model);
         double oldScore = Double.MAX_VALUE;
+        String process = processor.getIterations() + " iterations";
         while (reader.hasNext() && retVal.getEventCount() < processor.getMaxBatches() && ! retVal.isErrorStop()) {
             // Record this batch.
             retVal.event();
@@ -59,7 +60,7 @@ public class BatchTrainer extends Trainer {
                 log.info("Score at end of batch {} is {}.", retVal.getEventCount(),
                         newScore);
             } else try {
-                this.processor.checkModel(model, testingSet, retVal, retVal.getEventCount(), duration, newScore, this.eventsName());
+                this.processor.checkModel(model, testingSet, retVal, duration, newScore, this.eventsName(), process);
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.
                 newScore = Double.NaN;

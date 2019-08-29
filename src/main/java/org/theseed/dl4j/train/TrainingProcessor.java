@@ -808,7 +808,8 @@ public class TrainingProcessor implements ICommand {
             // Add batch normalization if desired.
             if (this.batchNormFlag) {
                 log.info("Adding batch normalization layer.");
-                configuration.layer(new BatchNormalization.Builder().build());
+                int width = widthComputer.getOutWidth();
+                configuration.layer(new BatchNormalization.Builder().nIn(width).nOut(width).build());
             }
             // Compute the hidden layers.
             int outputCount = this.labels.size();
@@ -957,13 +958,13 @@ public class TrainingProcessor implements ICommand {
      * @param model			current state of the model
      * @param testingSet	testing set for evaluating the model
      * @param runStats		current status of the training
-     * @param batchesRead	number of batches read
      * @param seconds		number of seconds spent processing this section
      * @param newScore		latest score
      * @param eventType		label to use for events
+     * @param processType	label to use for processing
      */
-    public void checkModel(MultiLayerNetwork model, DataSet testingSet, RunStats runStats, int batchesRead,
-            double seconds, double newScore, String eventType) {
+    public void checkModel(MultiLayerNetwork model, DataSet testingSet, RunStats runStats,
+            double seconds, double newScore, String eventType, String processType) {
         Evaluation eval = Trainer.evaluateModel(model, testingSet, this.getLabels());
         double newAccuracy = eval.accuracy();
         String saveFlag = "";
@@ -974,8 +975,8 @@ public class TrainingProcessor implements ICommand {
             saveFlag = String.format("  Best was %g in %d.", runStats.getBestAccuracy(), runStats.getBestEvent());
             runStats.uselessIteration();
         }
-        log.info("Score after {} {} is {}. {} seconds to process {} batches. Accuracy = {}.{}",
-                runStats.getEventCount(), eventType, newScore, seconds, batchesRead, newAccuracy, saveFlag);
+        log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",
+                runStats.getEventCount(), eventType, newScore, seconds, processType, newAccuracy, saveFlag);
     }
 
     /**

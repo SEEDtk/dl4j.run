@@ -51,13 +51,21 @@ public class BatchTrainer extends Trainer {
             for(int i=0; i < processor.getIterations(); i++ ) {
                 model.fit(trainingData);
             }
+            long duration = (System.currentTimeMillis() - startTime) / 1000;
             // Check for a score bounce.
             double newScore = model.score();
-            if (oldScore < newScore) retVal.bounce();
+            if (oldScore < newScore) {
+                retVal.bounce();
+                log.info("Score at end of batch {} is {}.", retVal.getEventCount(),
+                        newScore);
+            } else try {
+                this.processor.checkModel(model, testingSet, retVal, retVal.getEventCount(), duration, newScore, this.eventsName());
+            } catch (IllegalStateException e) {
+                // Here we had underflow in the evaluation.
+                newScore = Double.NaN;
+                log.warn("IllegalStateException: {}", e.getMessage());
+            }
             oldScore = newScore;
-            long duration = (System.currentTimeMillis() - startTime) / 1000;
-            log.info("Score at end of batch {} is {}. {} seconds for {} iterations.", retVal.getEventCount(),
-                    newScore, duration, processor.getIterations());
             // Force a stop if we have overflow or underflow.
             if (! Double.isFinite(newScore)) {
                 log.error("Overflow/Underflow in gradient processing.  Model abandoned.");

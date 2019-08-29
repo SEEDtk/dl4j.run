@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.nd4j.evaluation.classification.Evaluation;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
@@ -46,13 +45,11 @@ public class EpochTrainer extends Trainer {
         double oldScore = Double.MAX_VALUE;
         // Initialize the stats and counters for keeping the best generation.
         double bestScore = Double.MAX_VALUE;
-        double bestAccuracy = 0;
         int bestIter = 0;
         int numSaves = 0;
-        int uselessIterations = 0;
         // Do one epoch per iteration.
         while (retVal.getEventCount() < processor.getIterations() && ! retVal.isErrorStop() &&
-                uselessIterations < processor.getEarlyStop()) {
+                retVal.getUselessIterations() < processor.getEarlyStop()) {
             retVal.event();
             long start = System.currentTimeMillis();
             for (DataSet batch : batches) {
@@ -64,25 +61,13 @@ public class EpochTrainer extends Trainer {
                 retVal.bounce();
                 log.info("Score after epoch {} is {}.  {} seconds to process {} batches.", retVal.getEventCount(),
                         newScore, seconds, batchesRead);
-                uselessIterations++;
-            } else {
-                Evaluation eval = Trainer.evaluateModel(model, testingSet, this.processor.getLabels());
-                double newAccuracy = eval.accuracy();
-                String saveFlag = "";
-                if (newAccuracy > bestAccuracy) {
-                    retVal.setBestModel(model.clone());
-                    bestScore = newScore;
-                    bestAccuracy = newAccuracy;
-                    bestIter = retVal.getEventCount();
-                    saveFlag = "  Model saved.";
-                    numSaves++;
-                    uselessIterations = 0;
-                } else {
-                    saveFlag = String.format("  Best was %g in epoch %d.", bestAccuracy, bestIter);
-                    uselessIterations++;
-                }
-                log.info("Score after epoch {} is {}. {} seconds to process {} batches. Accuracy = {}.{}",
-                        retVal.getEventCount(), newScore, seconds, batchesRead, newAccuracy, saveFlag);
+                retVal.uselessIteration();
+            } else try {
+                this.processor.checkModel(model, testingSet, retVal, batchesRead, seconds, newScore, this.eventsName());
+            } catch (IllegalStateException e) {
+                // Here we had underflow in the evaluation.
+                newScore = Double.NaN;
+                log.warn("IllegalStateException: {}", e.getMessage());
             }
             oldScore = newScore;
             // Force a stop if we have overflow or underflow.
@@ -94,6 +79,7 @@ public class EpochTrainer extends Trainer {
         log.info("Best model was epoch {} with score {}.  {} models saved.", bestIter, bestScore, numSaves);
         return retVal;
     }
+
 
     @Override
     public String eventsName() {

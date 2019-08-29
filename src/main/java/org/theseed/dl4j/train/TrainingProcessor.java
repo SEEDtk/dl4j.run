@@ -374,6 +374,8 @@ public class TrainingProcessor implements ICommand {
         private MultiLayerNetwork bestModel;
         private int saveCount;
         private int bestEvent;
+        private double bestAccuracy;
+        private int uselessEvents;
 
         public RunStats(MultiLayerNetwork model) {
             this.errorStop = false;
@@ -382,6 +384,8 @@ public class TrainingProcessor implements ICommand {
             this.bestModel = model;
             this.bestEvent = 0;
             this.saveCount = 0;
+            this.bestAccuracy = 0;
+            this.uselessEvents = 0;
         }
 
         /** Record a score bounce. */
@@ -442,13 +446,37 @@ public class TrainingProcessor implements ICommand {
         }
 
         /**
+         * @return the accuracy of the best model
+         */
+        public double getBestAccuracy() {
+            return bestAccuracy;
+        }
+
+        /**
          * Store the new best model.
          * @param bestModel 	the new best model
+         * @param newScore
          */
-        public void setBestModel(MultiLayerNetwork bestModel) {
+        public void setBestModel(MultiLayerNetwork bestModel, double accuracy, double newScore) {
             this.bestModel = bestModel;
+            this.bestAccuracy = accuracy;
             this.bestEvent = this.eventCount;
             this.saveCount++;
+            this.uselessEvents = 0;
+        }
+
+        /**
+         * @return the number of useless iterations so far
+         */
+        public int getUselessIterations() {
+            return this.uselessEvents;
+        }
+
+        /**
+         * Increment the count of useless iterations.
+         */
+        public void uselessIteration() {
+            this.uselessEvents++;
         }
 
     }
@@ -823,6 +851,7 @@ public class TrainingProcessor implements ICommand {
             this.reader.setBatchSize(this.batchSize);
             long start = System.currentTimeMillis();
             Trainer myTrainer = Trainer.create(this.method, this, log);
+            log.info("Starting trainer.");
             RunStats runStats = myTrainer.trainModel(model, this.reader, testingSet);
             model = runStats.bestModel;
             String minutes = DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss");
@@ -920,6 +949,33 @@ public class TrainingProcessor implements ICommand {
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }
+    }
+
+    /**
+     * Check the model to see if we need to save this as the best model so far.
+     *
+     * @param model			current state of the model
+     * @param testingSet	testing set for evaluating the model
+     * @param runStats		current status of the training
+     * @param batchesRead	number of batches read
+     * @param seconds		number of seconds spent processing this section
+     * @param newScore		latest score
+     * @param eventType		label to use for events
+     */
+    public void checkModel(MultiLayerNetwork model, DataSet testingSet, RunStats runStats, int batchesRead,
+            double seconds, double newScore, String eventType) {
+        Evaluation eval = Trainer.evaluateModel(model, testingSet, this.getLabels());
+        double newAccuracy = eval.accuracy();
+        String saveFlag = "";
+        if (newAccuracy > runStats.getBestAccuracy()) {
+            runStats.setBestModel(model.clone(), newAccuracy, newScore);
+            saveFlag = "  Model saved.";
+        } else {
+            saveFlag = String.format("  Best was %g in %d.", runStats.getBestAccuracy(), runStats.getBestEvent());
+            runStats.uselessIteration();
+        }
+        log.info("Score after {} {} is {}. {} seconds to process {} batches. Accuracy = {}.{}",
+                runStats.getEventCount(), eventType, newScore, seconds, batchesRead, newAccuracy, saveFlag);
     }
 
     /**

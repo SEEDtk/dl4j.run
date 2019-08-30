@@ -41,19 +41,19 @@ import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
-import org.nd4j.linalg.lossfunctions.LossFunctions;
-import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
+import org.nd4j.linalg.lossfunctions.ILossFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.ChannelDataSetReader;
 import org.theseed.dl4j.CnnToRnnSequencePreprocessor;
+import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.Regularization;
 import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.dl4j.train.Trainer.Type;
+import org.theseed.utils.FloatList;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.IntegerList;
-
 
 /**
  * This class reads a training set and creates and saves a multi-layered model.  It takes as
@@ -128,7 +128,7 @@ import org.theseed.utils.IntegerList;
  * --method		training strategy to use-- epoch (small datasets) or batch (large datasets); the default
  * 				is EPOCH
  * --batch		use batch normalization before the hidden layers
- * --weights	weight initialization algorithm; the default is XAVIER
+ * --start		weight initialization algorithm; the default is XAVIER
  * --updater	update algorithm to use; the default is ADAM
  * --bUpdater	bias update algorithm to use; the default is NESTEROVS
  * --name		name for the model file; the default is "model.ser" in the model directory
@@ -137,6 +137,7 @@ import org.theseed.utils.IntegerList;
  * --balanced	specifies balanced hidden layers with the specified number of layers; a value of 0 (the default)
  * 				turns this option off; any other value overrides "-w"; the layers are in decreasing size
  * 				order with a near-constant size reduction
+ * --weights	comma-delimited list of weights for the loss function, in label order; the default is 1.0 for all labels
  *
  * For a convolution input layer, the following additional parameters are used.
  *
@@ -192,6 +193,8 @@ public class TrainingProcessor implements ICommand {
     private double bestAccuracy;
     /** regularization control object */
     private Regularization regulizer;
+    /** weights for loss function */
+    private FloatList lossWeights;
 
     /** logging facility */
     public static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
@@ -259,7 +262,7 @@ public class TrainingProcessor implements ICommand {
     /** loss function */
     @Option(name="-l", aliases={"--lossFun", "--loss"}, metaVar="mse",
             usage="loss function for scoring output layer")
-    private LossFunctions.LossFunction lossFunction;
+    private LossFunctionType lossFunction;
 
     /** normalization flag */
     @Option(name="--raw", usage="suppress dataset normalization")
@@ -331,7 +334,7 @@ public class TrainingProcessor implements ICommand {
     private Trainer.Type method;
 
     /** weight initialization algorithm */
-    @Option(name="--weight", usage="weight initialization strategy")
+    @Option(name="--start", usage="weight initialization strategy")
     private WeightInit weightInitMethod;
 
     /** early-stop limit */
@@ -359,6 +362,12 @@ public class TrainingProcessor implements ICommand {
     @Option(name="--balanced", metaVar="4", usage="compute balanced layer widths for the specified number of layers")
     private int balancedLayers;
 
+    /** loss function weights */
+    @Option(name="--weights", metaVar="1.0,0.5", usage="comma-delimited list of loss function weights, by label")
+    private void setWeights(String weightString) {
+        this.lossWeights = new FloatList(weightString);
+    }
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -376,6 +385,7 @@ public class TrainingProcessor implements ICommand {
         private int bestEvent;
         private double bestAccuracy;
         private int uselessEvents;
+        private double bestScore;
 
         public RunStats(MultiLayerNetwork model) {
             this.errorStop = false;
@@ -386,6 +396,7 @@ public class TrainingProcessor implements ICommand {
             this.saveCount = 0;
             this.bestAccuracy = 0;
             this.uselessEvents = 0;
+            this.bestScore = Double.MAX_VALUE;
         }
 
         /** Record a score bounce. */
@@ -425,6 +436,13 @@ public class TrainingProcessor implements ICommand {
         }
 
         /**
+         * @return the score for the last model saved
+         */
+        public double getBestScore() {
+            return bestScore;
+        }
+
+        /**
          * @return the best model found
          */
         public MultiLayerNetwork getBestModel() {
@@ -460,6 +478,7 @@ public class TrainingProcessor implements ICommand {
         public void setBestModel(MultiLayerNetwork bestModel, double accuracy, double newScore) {
             this.bestModel = bestModel;
             this.bestAccuracy = accuracy;
+            this.bestScore = newScore;
             this.bestEvent = this.eventCount;
             this.saveCount++;
             this.uselessEvents = 0;
@@ -501,7 +520,7 @@ public class TrainingProcessor implements ICommand {
         this.biasRate = 0.2;
         this.learnRate = 1e-3;
         this.maxBatches = Integer.MAX_VALUE;
-        this.lossFunction = LossFunctions.LossFunction.MCXENT;
+        this.lossFunction = LossFunctionType.MCXENT;
         this.seed = (int) (System.currentTimeMillis() & 0xFFFFF);
         this.trainingFile = null;
         this.regMode = Regularization.Mode.GAUSS;
@@ -527,6 +546,7 @@ public class TrainingProcessor implements ICommand {
         this.comment = null;
         this.otherMode = false;
         this.balancedLayers = 0;
+        this.lossWeights = new FloatList();
         // Clear the accuracy value.
         this.bestAccuracy = 0.0;
         // Parse the command line.
@@ -571,6 +591,11 @@ public class TrainingProcessor implements ICommand {
                             this.reader = myReader;
                             log.info("Channel input with {} channels.", this.channelCount);
                         }
+                        if (this.lossWeights.isEmpty())
+                            // Here we need to default the list to all 1s.
+                            this.lossWeights = new FloatList(1.0, this.labels.size());
+                        else if (this.lossWeights.size() != this.labels.size())
+                            throw new IllegalArgumentException("The number of loss weights must match the number of labels.");
                         // Insure the number of filters or strides is not greater than the number of convolutions.
                         if (! this.convolutions.isEmpty()) {
                             if (this.filterSizes.size() > this.convolutions.size())
@@ -578,7 +603,7 @@ public class TrainingProcessor implements ICommand {
                             if (this.strides.size() > this.convolutions.size())
                                 throw new IllegalArgumentException("Cannot have more strides than convolution layers.");
                         }
-                        // Verify that the subfactor is in range. This requires us to compute
+                        // Verify that the sub-sampling factor is in range. This requires us to compute
                         // the effect of the various input layers.  We need this for the
                         // balanced-layer computation, too.
                         LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(),
@@ -678,12 +703,13 @@ public class TrainingProcessor implements ICommand {
         writer.format("--learnRate %e\t# weight learning rate%n", this.learnRate);
         writer.format("--updateRate %g\t# bias update coefficient%n", this.biasRate);
         writer.format("--seed %d\t# random number initialization seed%n", this.seed);
-        functions = Stream.of(LossFunction.values()).map(LossFunction::name).collect(Collectors.joining(", "));
+        functions = Stream.of(LossFunctionType.values()).map(LossFunctionType::name).collect(Collectors.joining(", "));
         writer.format("## Valid loss functions are %s.%n", functions);
         writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction);
+        writer.format("--weights %s\tweights (by label) for computing loss function", this.lossWeights.original());
         functions = Stream.of(WeightInit.values()).map(WeightInit::name).collect(Collectors.joining(", "));
-        writer.format("## Valid weight initializations are %s.%n", functions);
-        writer.format("--weight %s\t# weight initialization method%n", this.weightInitMethod.toString());
+        writer.format("## Valid starting weight initializations are %s.%n", functions);
+        writer.format("--start %s\t# starting weight initialization method%n", this.weightInitMethod.toString());
         functions = Stream.of(Activation.values()).map(Activation::name).collect(Collectors.joining(", "));
         writer.format("## Valid activation functions are %s.%n", functions);
         writer.format("--init %s\t# initial activation function%n", this.initActivationType.toString());
@@ -837,12 +863,13 @@ public class TrainingProcessor implements ICommand {
                 configuration.layer(newLayer);
             }
             // Add the output layer.
-            Activation outActivation = (this.lossFunction == LossFunctions.LossFunction.XENT ?
-                    Activation.SIGMOID : Activation.SOFTMAX);
+            Activation outActivation = this.lossFunction.getOutActivation();
+            ILossFunction lossComputer = this.lossFunction.create(this.lossWeights.getValues());
             log.info("Creating output layer with input width {} and {} outputs.", widthComputer.getOutWidth(),
                     outputCount);
-            configuration.layer(new OutputLayer.Builder(this.lossFunction)
+            configuration.layer(new OutputLayer.Builder()
                             .activation(outActivation)
+                            .lossFunction(lossComputer)
                             .nIn(widthComputer.getOutWidth()).nOut(outputCount).build());
             // Here we create the model itself.
             log.info("Creating model.");
@@ -862,6 +889,7 @@ public class TrainingProcessor implements ICommand {
                 ModelSerializer.writeModel(model, this.modelName, true, normalizer);
             }
             // Display the configuration.
+            // TODO print loss weights
             StringBuilder parms = new StringBuilder();
             parms.append(String.format(
                             "%n=========================== Parameters ===========================%n" +
@@ -879,6 +907,7 @@ public class TrainingProcessor implements ICommand {
                             "     Hidden layer activation type is %s.%n" +
                             "     Output layer activation type is %s.%n" +
                             "     Output layer loss function is %s.%n" +
+                            "     Loss function label weights are %s.%n" +
                             "     %s minutes to run %d %s (best was %d), with %d score bounces.%n" +
                             "     %d models saved.",
                            this.iterations, this.batchSize, this.testSize, this.seed,
@@ -887,8 +916,8 @@ public class TrainingProcessor implements ICommand {
                            this.weightInitMethod.toString(), this.weightUpdateMethod.toString(), this.learnRate,
                            this.initActivationType.toString(), this.activationType.toString(),
                            outActivation.toString(), this.lossFunction.toString(),
-                           minutes, runStats.getEventCount(), myTrainer.eventsName(),
-                           runStats.getBestEvent(), runStats.getBounceCount(),
+                           this.lossWeights.toString(), minutes, runStats.getEventCount(),
+                           myTrainer.eventsName(), runStats.getBestEvent(), runStats.getBounceCount(),
                            runStats.getSaveCount()));
             if (! this.convolutions.isEmpty()) {
                 parms.append(String.format("%n     Convolution layers used with kernel sizes %s", this.convolutions));

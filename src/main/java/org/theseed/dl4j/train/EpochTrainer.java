@@ -44,10 +44,6 @@ public class EpochTrainer extends Trainer {
         String process = batchesRead + " batches";
         // Initialize the old score for bounce detection.
         double oldScore = Double.MAX_VALUE;
-        // Initialize the stats and counters for keeping the best generation.
-        double bestScore = Double.MAX_VALUE;
-        int bestIter = 0;
-        int numSaves = 0;
         // Do one epoch per iteration.
         while (retVal.getEventCount() < processor.getIterations() && ! retVal.isErrorStop() &&
                 retVal.getUselessIterations() < processor.getEarlyStop()) {
@@ -60,7 +56,7 @@ public class EpochTrainer extends Trainer {
             double newScore = model.score();
              if (newScore > oldScore) {
                 retVal.bounce();
-                log.info("Score after epoch {} is {}.  {} seconds to process {}.", retVal.getEventCount(),
+                log.info("Score after {} epochs is {}.  {} seconds to process {}.", retVal.getEventCount(),
                         newScore, seconds, process);
                 retVal.uselessIteration();
             } else try {
@@ -77,7 +73,8 @@ public class EpochTrainer extends Trainer {
                 retVal.error();
             }
         }
-        log.info("Best model was epoch {} with score {}.  {} models saved.", bestIter, bestScore, numSaves);
+        log.info("Best model was epoch {} with score {}.  {} models saved.", retVal.getBestEvent(),
+                retVal.getBestScore(), retVal.getSaveCount());
         return retVal;
     }
 

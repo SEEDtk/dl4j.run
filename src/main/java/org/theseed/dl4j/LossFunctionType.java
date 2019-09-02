@@ -63,7 +63,7 @@ public enum LossFunctionType {
     /**
      * @return TRUE if this function is binary-classification only
      */
-    public boolean getBinaryOnly() {
+    public boolean isBinaryOnly() {
         return this.binaryOnly;
     }
 
@@ -80,7 +80,10 @@ public enum LossFunctionType {
      * @param weights	an array of weights, one per label
      */
     public ILossFunction create(double[] weights) {
-        INDArray weightArray = Nd4j.create(weights);
+        float[] weightCopy = new float[weights.length];
+        for (int i = 0; i < weights.length; i++)
+            weightCopy[i] = (float) weights[i];
+        INDArray weightArray = Nd4j.create(weightCopy);
         ILossFunction retVal = null;
         switch (this) {
         case XENT:

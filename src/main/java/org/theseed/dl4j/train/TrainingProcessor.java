@@ -38,6 +38,7 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.nd4j.evaluation.classification.Evaluation;
 import org.nd4j.linalg.activations.Activation;
+import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
@@ -137,7 +138,8 @@ import org.theseed.utils.IntegerList;
  * --balanced	specifies balanced hidden layers with the specified number of layers; a value of 0 (the default)
  * 				turns this option off; any other value overrides "-w"; the layers are in decreasing size
  * 				order with a near-constant size reduction
- * --weights	comma-delimited list of weights for the loss function, in label order; the default is 1.0 for all labels
+ * --weights	comma-delimited list of weights for the loss function, in label order; the default is
+ * 				computed according to the proportions in the testing set
  *
  * For a convolution input layer, the following additional parameters are used.
  *
@@ -575,6 +577,10 @@ public class TrainingProcessor implements ICommand {
                             if (! this.trainingFile.exists())
                                 throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
                         }
+                        // Check the loss function.
+                        if (this.lossFunction.isBinaryOnly() && this.labels.size() > 2)
+                            throw new IllegalArgumentException(this.lossFunction + " is for binary classification but there are " +
+                                    this.labels.size() + " classes.");
                         // Determine the input type and get the appropriate reader.
                         File channelFile = new File(this.modelDir, "channels.tbl");
                         this.channelMode = channelFile.exists();
@@ -591,10 +597,25 @@ public class TrainingProcessor implements ICommand {
                             this.reader = myReader;
                             log.info("Channel input with {} channels.", this.channelCount);
                         }
-                        if (this.lossWeights.isEmpty())
-                            // Here we need to default the list to all 1s.
-                            this.lossWeights = new FloatList(1.0, this.labels.size());
-                        else if (this.lossWeights.size() != this.labels.size())
+                        // Get the testing set.
+                        log.info("Reading testing set (size = {}).", this.testSize);
+                        this.reader.setBatchSize(this.testSize);
+                        this.testingSet = this.reader.next();
+                        if (! this.reader.hasNext()) {
+                            log.warn("Training set contains only test data. Batch size = {} but {} records in input.",
+                                    this.testSize, this.testingSet.numExamples());
+                            throw new IllegalArgumentException("No training data.");
+                        }
+                        if (this.lossWeights.isEmpty()) {
+                            // Here we need to default the list to the distribution in the testing set.
+                            log.info("Computing loss function weights from testing set.");
+                            double[] buffer = new double[this.labels.size()];
+                            INDArray labelSums = this.testingSet.getLabels().sum(0);
+                            double base = labelSums.maxNumber().doubleValue();
+                            for (int i = 0; i < buffer.length; i++)
+                                buffer[i] = labelSums.getDouble(i) / base;
+                            this.lossWeights = new FloatList(buffer);
+                        } else if (this.lossWeights.size() != this.labels.size())
                             throw new IllegalArgumentException("The number of loss weights must match the number of labels.");
                         // Insure the number of filters or strides is not greater than the number of convolutions.
                         if (! this.convolutions.isEmpty()) {
@@ -705,15 +726,15 @@ public class TrainingProcessor implements ICommand {
         writer.format("--seed %d\t# random number initialization seed%n", this.seed);
         functions = Stream.of(LossFunctionType.values()).map(LossFunctionType::name).collect(Collectors.joining(", "));
         writer.format("## Valid loss functions are %s.%n", functions);
-        writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction);
-        writer.format("--weights %s\tweights (by label) for computing loss function", this.lossWeights.original());
+        writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction.name());
+        writer.format("--weights %s\t# weights (by label) for computing loss function", this.lossWeights.original());
         functions = Stream.of(WeightInit.values()).map(WeightInit::name).collect(Collectors.joining(", "));
         writer.format("## Valid starting weight initializations are %s.%n", functions);
-        writer.format("--start %s\t# starting weight initialization method%n", this.weightInitMethod.toString());
+        writer.format("--start %s\t# starting weight initialization method%n", this.weightInitMethod.name());
         functions = Stream.of(Activation.values()).map(Activation::name).collect(Collectors.joining(", "));
         writer.format("## Valid activation functions are %s.%n", functions);
-        writer.format("--init %s\t# initial activation function%n", this.initActivationType.toString());
-        writer.format("--activation %s\t# hidden layer activation function%n", this.activationType.toString());
+        writer.format("--init %s\t# initial activation function%n", this.initActivationType.name());
+        writer.format("--activation %s\t# hidden layer activation function%n", this.activationType.name());
         functions = Stream.of(GradientNormalization.values()).map(GradientNormalization::name).collect(Collectors.joining(", "));
         writer.format("## Valid gradient normalizations are %s.%n", functions);
         writer.format("--gradNorm %s\t# gradient normalization strategy%n", this.gradNorm.toString());
@@ -728,8 +749,8 @@ public class TrainingProcessor implements ICommand {
         writer.format("%s--lstm %d\t# number of long-short-term time series layers%n", commentFlag, this.lstmLayers);
         functions = Stream.of(GradientUpdater.Type.values()).map(GradientUpdater.Type::name).collect(Collectors.joining(", "));
         writer.format("## Valid updater methods are %s.%n", functions);
-        writer.format("--updater %s\t# weight gradient updater method (uses learning rate)%n", this.weightUpdateMethod.toString());
-        writer.format("--bUpdater %s\t# bias gradient updater method (uses update rate)%n", this.biasUpdateMethod.toString());
+        writer.format("--updater %s\t# weight gradient updater method (uses learning rate)%n", this.weightUpdateMethod.name());
+        writer.format("--bUpdater %s\t# bias gradient updater method (uses update rate)%n", this.biasUpdateMethod.name());
         writer.format("--name %s\t# model file name%n", this.modelName);
         commentFlag = (this.rawMode ? "" : "# ");
         writer.format("%s--raw\t# suppress input normalization%n", commentFlag);
@@ -743,13 +764,6 @@ public class TrainingProcessor implements ICommand {
 
     public void run() {
         try {
-            // Get the testing set and compute the normalizer.
-            log.info("Reading testing set (size = {}).", this.testSize);
-            this.reader.setBatchSize(this.testSize);
-            this.testingSet = this.reader.next();
-            if (! this.reader.hasNext())
-                log.warn("Training set contains only test data. Batch size = {} but {} records in input.",
-                        this.testSize, this.testingSet.numExamples());
             DataNormalization normalizer = null;
             if (! this.rawMode) {
                 // Here the model must be normalized.
@@ -845,13 +859,18 @@ public class TrainingProcessor implements ICommand {
                 if (layerSize == 0) {
                     // Here we have an ElementWiseMultiplicationLayer.
                     ElementWiseMultiplicationLayer.Builder builder = new ElementWiseMultiplicationLayer.Builder()
-                            .nIn(widthComputer.getOutWidth()).nOut(widthComputer.getOutWidth());
+                            .nIn(widthComputer.getOutWidth()).nOut(widthComputer.getOutWidth()).activation(Activation.IDENTITY);
                     newLayer = builder.build();
                     log.info("Creating element-wise mulitplication layer with width {}.", widthComputer.getOutWidth());
                 } else {
                     // Here we have a DenseLayer.
                     log.info("Creating hidden layer with input width {} and {} outputs.", widthComputer.getOutWidth(), layerSize);
                     DenseLayer.Builder builder = new DenseLayer.Builder().nIn(widthComputer.getOutWidth()).nOut(layerSize);
+                    // If this is the first dense layer, apply the initial activation function.
+                    if (! inputLayerCreated) {
+                        builder.activation(initActivationType);
+                        inputLayerCreated = true;
+                    }
                     // Do the regularization.
                     this.regulizer.apply(builder);
                     // Build the layer.

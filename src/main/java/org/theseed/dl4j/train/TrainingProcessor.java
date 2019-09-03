@@ -727,7 +727,7 @@ public class TrainingProcessor implements ICommand {
         functions = Stream.of(LossFunctionType.values()).map(LossFunctionType::name).collect(Collectors.joining(", "));
         writer.format("## Valid loss functions are %s.%n", functions);
         writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction.name());
-        writer.format("--weights %s\t# weights (by label) for computing loss function", this.lossWeights.original());
+        writer.format("--weights %s\t# weights (by label) for computing loss function%n", this.lossWeights.original());
         functions = Stream.of(WeightInit.values()).map(WeightInit::name).collect(Collectors.joining(", "));
         writer.format("## Valid starting weight initializations are %s.%n", functions);
         writer.format("--start %s\t# starting weight initialization method%n", this.weightInitMethod.name());
@@ -843,14 +843,14 @@ public class TrainingProcessor implements ICommand {
                 configuration.inputPreProcessor(layerIdx, new CnnToFeedForwardPreProcessor(1, widthComputer.getOutWidth(),
                         widthComputer.getChannels()));
             }
-            // We have multi-dimensional input, so we must flatten the width for the hidden layers.
-            widthComputer.flatten();
             // Add batch normalization if desired.
             if (this.batchNormFlag) {
                 log.info("Adding batch normalization layer.");
                 int width = widthComputer.getOutWidth();
                 configuration.layer(new BatchNormalization.Builder().nIn(width).nOut(width).build());
             }
+            // We have multi-dimensional input, so we must flatten the width for the hidden layers.
+            widthComputer.flatten();
             // Compute the hidden layers.
             int outputCount = this.labels.size();
             for (int layerSize : this.denseLayers) {
@@ -900,16 +900,15 @@ public class TrainingProcessor implements ICommand {
             Trainer myTrainer = Trainer.create(this.method, this, log);
             log.info("Starting trainer.");
             RunStats runStats = myTrainer.trainModel(model, this.reader, testingSet);
-            model = runStats.bestModel;
+            MultiLayerNetwork bestModel = runStats.bestModel;
             String minutes = DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss");
             // Here we save the model.
             if (! runStats.isErrorStop()) {
                 log.info("Saving model to {}.", this.modelName);
-                ModelSerializer.writeModel(model, this.modelName, true, normalizer);
+                ModelSerializer.writeModel(bestModel, this.modelName, true, normalizer);
             }
             // Display the configuration.
-            // TODO print loss weights
-            StringBuilder parms = new StringBuilder();
+           StringBuilder parms = new StringBuilder();
             parms.append(String.format(
                             "%n=========================== Parameters ===========================%n" +
                             "     iterations  = %12d, batch size    = %12d%n" +
@@ -959,7 +958,7 @@ public class TrainingProcessor implements ICommand {
             } else {
                 // Now we evaluate the model on the test set: compare the output to the actual
                 // values.
-                Evaluation eval = Trainer.evaluateModel(model, this.testingSet, this.labels);
+                Evaluation eval = Trainer.evaluateModel(bestModel, this.testingSet, this.labels);
                 // Output the evaluation.
                 parms.append(eval.stats());
                 ConfusionMatrix<Integer> matrix = eval.getConfusion();
@@ -991,7 +990,7 @@ public class TrainingProcessor implements ICommand {
                 this.bestAccuracy = eval.accuracy();
             }
             // Add the summary.
-            parms.append(model.summary(inputShape));
+            parms.append(bestModel.summary(inputShape));
             String report = parms.toString();
             log.info(report);
             writeTrialReport(this.comment, report);

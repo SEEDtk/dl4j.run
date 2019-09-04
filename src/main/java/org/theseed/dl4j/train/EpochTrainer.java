@@ -27,7 +27,7 @@ public class EpochTrainer extends Trainer {
      * @param processor		TrainingProcessor that created this model
      * @param log			log to use for messages
      */
-    public EpochTrainer(TrainingProcessor processor, Logger log) {
+    public EpochTrainer(LearningProcessor processor, Logger log) {
         super(processor, log);
     }
 

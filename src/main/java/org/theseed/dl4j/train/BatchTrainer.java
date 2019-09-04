@@ -24,7 +24,7 @@ public class BatchTrainer extends Trainer {
      * @param processor		TrainingProcessor that created this model
      * @param log			log to use for messages
      */
-    public BatchTrainer(TrainingProcessor processor, Logger log) {
+    public BatchTrainer(LearningProcessor processor, Logger log) {
         super(processor, log);
     }
 

@@ -231,7 +231,7 @@ abstract public class RunStats {
      * @param eventType		label to use for events
      * @param processType	label to use for processing
      */
-    abstract public void checkModel(MultiLayerNetwork model, DataSet testingSet, TrainingProcessor processor,
+    abstract public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
             double seconds, double newScore, String eventType, String processType);
 
     /**
@@ -279,7 +279,7 @@ abstract public class RunStats {
          * @param processType	label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, TrainingProcessor processor,
+        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
                 double seconds, double newScore, String eventType, String processType) {
             Evaluation eval = Trainer.evaluateModel(model, testingSet, processor.getLabels());
             double newAccuracy = eval.accuracy();
@@ -317,7 +317,7 @@ abstract public class RunStats {
          * @param processType	label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, TrainingProcessor processor,
+        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
                 double seconds, double newScore, String eventType, String processType) {
             Evaluation eval = Trainer.evaluateModel(model, testingSet, processor.getLabels());
             double newAccuracy = eval.accuracy();

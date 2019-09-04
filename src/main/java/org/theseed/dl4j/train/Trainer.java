@@ -23,7 +23,7 @@ public abstract class Trainer {
 
     // FIELDS
     /** relevant training processor */
-    protected TrainingProcessor processor;
+    protected LearningProcessor processor;
     /** logger for messages */
     protected Logger log;
 
@@ -33,7 +33,7 @@ public abstract class Trainer {
      * @param processor		the training processor that created the model
      * @param log			logging facility for messages
      */
-    public Trainer(TrainingProcessor processor, Logger log) {
+    public Trainer(LearningProcessor processor, Logger log) {
         this.processor = processor;
         this.log = log;
     }
@@ -65,7 +65,7 @@ public abstract class Trainer {
      * @param processor		the training processor that created the model
      * @param log			logging facility for messages
      */
-    public static Trainer create(Type trainerType, TrainingProcessor processor, Logger log) {
+    public static Trainer create(Type trainerType, LearningProcessor processor, Logger log) {
         Trainer retVal = null;
         switch (trainerType) {
         case BATCH :

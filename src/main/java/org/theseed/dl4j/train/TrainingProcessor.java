@@ -8,17 +8,12 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.apache.commons.text.TextStringBuilder;
-import org.nd4j.evaluation.classification.ConfusionMatrix;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.inputs.InputType;
@@ -33,21 +28,14 @@ import org.deeplearning4j.nn.conf.layers.BatchNormalization;
 import org.deeplearning4j.nn.conf.layers.ConvolutionLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
-import org.deeplearning4j.util.ModelSerializer;
-import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
-import org.nd4j.evaluation.classification.Evaluation;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
 import org.nd4j.linalg.lossfunctions.ILossFunction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.theseed.dl4j.ChannelDataSetReader;
 import org.theseed.dl4j.CnnToRnnSequencePreprocessor;
 import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.Regularization;
@@ -171,19 +159,8 @@ import org.theseed.utils.IntegerList;
  * @author Bruce Parrello
  *
  */
-public class TrainingProcessor implements ICommand {
+public class TrainingProcessor extends LearningProcessor implements ICommand {
 
-    // FIELDS
-    /** input file reader */
-    private TabbedDataSetReader reader;
-    /** array of labels */
-    private List<String> labels;
-    /** testing set */
-    private DataSet testingSet;
-    /** number of input channels */
-    private int channelCount;
-    /** TRUE if we have channel input */
-    private boolean channelMode;
     /** list of convolution widths */
     private IntegerList convolutions;
     /** list of hidden layer widths */
@@ -194,45 +171,18 @@ public class TrainingProcessor implements ICommand {
     private IntegerList strides;
     /** actual updater learning rate */
     private double realLearningRate;
-    /** best accuracy */
-    private double bestAccuracy;
     /** regularization control object */
     private Regularization regulizer;
     /** weights for loss function */
     private FloatList lossWeights;
 
-    /** logging facility */
-    private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
+
 
     // COMMAND LINE
-
-    /** help option */
-    @Option(name="-h", aliases={"--help"}, help=true)
-    private boolean help;
 
     /** parameter dump */
     @Option(name="--parms", usage="write command-line parameters to a configuration file")
     private File parmFile;
-
-    /** name or index of the label column */
-    @Option(name="-c", aliases={"--col"}, metaVar="0",
-            usage="input column containing class")
-    private String labelCol;
-
-    /** number of iterations to run for each input batch */
-    @Option(name="-n", aliases={"--iter"}, metaVar="1000",
-            usage="number of iterations per batch")
-    private int iterations;
-
-    /** size of each input batch */
-    @Option(name="-b", aliases={"--batchSize"}, metaVar="1000",
-            usage="size of each input batch")
-    private int batchSize;
-
-    /** size of testing set */
-    @Option(name="-t", aliases={"--testSize"}, metaVar="1000",
-            usage="size of the testing set")
-    private int testSize;
 
     /** number of nodes in each middle layer */
     @Option(name="-w", aliases={"--widths"}, metaVar="7",
@@ -250,19 +200,10 @@ public class TrainingProcessor implements ICommand {
     @Option(name="--regMode", usage="regularization mode")
     private Regularization.Mode regMode;
 
-    /** maximum number of batches to read, or -1 to read them all */
-    @Option(name="-x", aliases={"--maxBatches"}, metaVar="6",
-            usage="maximum number of batches to read")
-    private int maxBatches;
-
     /** bias updater coefficient */
     @Option(name="-u", aliases={"--updateRate"}, metaVar="0.1",
             usage="bias updater coefficient")
     private double biasRate;
-
-    /** initialization seed */
-    @Option(name="-s", aliases={"--seed"}, metaVar="12765", usage="random number seed")
-    private int seed;
 
     /** loss function */
     @Option(name="-l", aliases={"--lossFun", "--loss"}, metaVar="mse",
@@ -280,11 +221,6 @@ public class TrainingProcessor implements ICommand {
     /** initial activation function */
     @Option(name="--init", usage="activation function for input layer")
     private Activation initActivationType;
-
-    /** input training set */
-    @Option(name="-i", aliases={"--input"}, metaVar="training.tbl",
-            usage="input training set file")
-    private File trainingFile;
 
     /** learning rate */
     @Option(name="-r", aliases={"--learnRate"}, metaVar="0.1",
@@ -326,42 +262,17 @@ public class TrainingProcessor implements ICommand {
         this.strides = new IntegerList(strides);
     }
 
-    /** comma-delimited list of metadata column names */
-    @Option(name="--meta", metaVar="name,date", usage="comma-delimited list of metadata columns")
-    private String metaCols;
-
-    /** comment to display in trial log */
-    @Option(name="--comment", metaVar="changed bias rate", usage="comment to display in trial log")
-    private String comment;
-
-    /** method to use for training */
-    @Option(name="--method", metaVar="epoch", usage="strategy for processing of training set")
-    private Trainer.Type method;
-
     /** weight initialization algorithm */
     @Option(name="--start", usage="weight initialization strategy")
     private WeightInit weightInitMethod;
-
-    /** early-stop limit */
-    @Option(name="--earlyStop", aliases={"--early"}, metaVar="100",
-            usage="early stop max useless iterations (0 to turn off)")
-    private int earlyStop;
 
     /** bias updater algorithm */
     @Option(name="--bUpdater", usage="bias gradient updater algorithm")
     private GradientUpdater.Type biasUpdateMethod;
 
-    /** model file name */
-    @Option(name="--name", usage="model file name (default is model.ser in model directory)")
-    private File modelName;
-
     /** weight updater algorithm */
     @Option(name="--updater", usage="weight gradient updater algorithm")
     private GradientUpdater.Type weightUpdateMethod;
-
-    /** indicates category 0 is negative */
-    @Option(name="--other", usage="show metrics assuming category 0 is a negative result")
-    private boolean otherMode;
 
     /** use balanced layers */
     @Option(name="--balanced", metaVar="4", usage="compute balanced layer widths for the specified number of layers")
@@ -373,15 +284,6 @@ public class TrainingProcessor implements ICommand {
         this.lossWeights = new FloatList(weightString);
     }
 
-    /** optimization preference */
-    @Option(name="--prefer", metaVar="SCORE", usage="model aspect to optimize during search")
-    private RunStats.OptimizationType preference;
-
-    /** model directory */
-    @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
-    private File modelDir;
-
-
     /**
      * Parse command-line options to specify the parameters of this object.
      *
@@ -392,18 +294,12 @@ public class TrainingProcessor implements ICommand {
     public boolean parseCommand(String[] args) {
         boolean retVal = false;
         // Set the defaults.
-        this.help = false;
-        this.labelCol = "1";
-        this.iterations = 1000;
-        this.batchSize = 500;
-        this.testSize = 2000;
+        this.setDefaults();
         this.denseLayers = new IntegerList();
         this.regFactor = 0.3;
         this.biasRate = 0.2;
         this.learnRate = 1e-3;
-        this.maxBatches = Integer.MAX_VALUE;
         this.lossFunction = LossFunctionType.MCXENT;
-        this.seed = (int) (System.currentTimeMillis() & 0xFFFFF);
         this.trainingFile = null;
         this.regMode = Regularization.Mode.GAUSS;
         this.activationType = Activation.RELU;
@@ -411,27 +307,16 @@ public class TrainingProcessor implements ICommand {
         this.gradNorm = GradientNormalization.None;
         this.convolutions = new IntegerList();
         this.lstmLayers = 0;
-        this.channelMode = false;
         this.subFactor = 1;
         this.filterSizes = new IntegerList("1");
         this.strides = new IntegerList("1");
-        this.metaCols = "";
-        this.channelCount = 1;
         this.parmFile = null;
-        this.method = Type.EPOCH;
         this.batchNormFlag = false;
-        this.earlyStop = 200;
         this.weightInitMethod = WeightInit.XAVIER;
         this.biasUpdateMethod = GradientUpdater.Type.NESTEROVS;
         this.weightUpdateMethod = GradientUpdater.Type.ADAM;
-        this.modelName = null;
-        this.comment = null;
-        this.otherMode = false;
         this.balancedLayers = 0;
-        this.preference = RunStats.OptimizationType.ACCURACY;
         this.lossWeights = new FloatList();
-        // Clear the accuracy value.
-        this.bestAccuracy = 0.0;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -448,8 +333,8 @@ public class TrainingProcessor implements ICommand {
                     if (! labelFile.exists()) {
                         throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
                     } else {
-                        this.labels = TabbedDataSetReader.readLabels(labelFile);
-                        log.info("{} labels read from label file.", this.labels.size());
+                        this.setLabels(TabbedDataSetReader.readLabels(labelFile));
+                        log.info("{} labels read from label file.", this.getLabels().size());
                         // Parse the metadata column list.
                         List<String> metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
                         // Finally, we initialize the input to get the label and metadata columns handled.
@@ -459,44 +344,20 @@ public class TrainingProcessor implements ICommand {
                                 throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
                         }
                         // Check the loss function.
-                        if (this.lossFunction.isBinaryOnly() && this.labels.size() > 2)
+                        if (this.lossFunction.isBinaryOnly() && this.getLabels().size() > 2)
                             throw new IllegalArgumentException(this.lossFunction + " is for binary classification but there are " +
-                                    this.labels.size() + " classes.");
-                        // Determine the input type and get the appropriate reader.
-                        File channelFile = new File(this.modelDir, "channels.tbl");
-                        this.channelMode = channelFile.exists();
-                        if (! this.channelMode) {
-                            log.info("Normal input.");
-                            // Normal situation.  Read scalar values.
-                            this.reader = new TabbedDataSetReader(this.trainingFile, this.labelCol, this.labels, metaList);
-                        } else {
-                            // Here we have channel input.
-                            HashMap<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
-                            ChannelDataSetReader myReader = new ChannelDataSetReader(this.trainingFile, this.labelCol,
-                                    this.labels, metaList, channelMap);
-                            this.channelCount = myReader.getChannels();
-                            this.reader = myReader;
-                            log.info("Channel input with {} channels.", this.channelCount);
-                        }
-                        // Get the testing set.
-                        log.info("Reading testing set (size = {}).", this.testSize);
-                        this.reader.setBatchSize(this.testSize);
-                        this.testingSet = this.reader.next();
-                        if (! this.reader.hasNext()) {
-                            log.warn("Training set contains only test data. Batch size = {} but {} records in input.",
-                                    this.testSize, this.testingSet.numExamples());
-                            throw new IllegalArgumentException("No training data.");
-                        }
+                                    this.getLabels().size() + " classes.");
+                        initializeReader(metaList);
                         if (this.lossWeights.isEmpty()) {
                             // Here we need to default the list to the distribution in the testing set.
                             log.info("Computing loss function weights from testing set.");
-                            double[] buffer = new double[this.labels.size()];
-                            INDArray labelSums = this.testingSet.getLabels().sum(0);
+                            double[] buffer = new double[this.getLabels().size()];
+                            INDArray labelSums = this.getTestingSet().getLabels().sum(0);
                             double base = labelSums.maxNumber().doubleValue();
                             for (int i = 0; i < buffer.length; i++)
                                 buffer[i] = labelSums.getDouble(i) / base;
                             this.lossWeights = new FloatList(buffer);
-                        } else if (this.lossWeights.size() != this.labels.size())
+                        } else if (this.lossWeights.size() != this.getLabels().size())
                             throw new IllegalArgumentException("The number of loss weights must match the number of labels.");
                         // Insure the number of filters or strides is not greater than the number of convolutions.
                         if (! this.convolutions.isEmpty()) {
@@ -509,7 +370,7 @@ public class TrainingProcessor implements ICommand {
                         // the effect of the various input layers.  We need this for the
                         // balanced-layer computation, too.
                         LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(),
-                                this.channelCount);
+                                this.getChannelCount());
                         if (! this.convolutions.isEmpty()) {
                             int strideFactor = this.strides.first();
                             int filters = this.filterSizes.first();
@@ -534,7 +395,7 @@ public class TrainingProcessor implements ICommand {
                         // here.
                         if (this.balancedLayers > 0) {
                             // Compute the balanced layer widths.
-                            int[] widths = widthComputer.balancedLayers(this.balancedLayers, this.labels.size());
+                            int[] widths = widthComputer.balancedLayers(this.balancedLayers, this.getLabels().size());
                             this.denseLayers = new IntegerList(widths);
                         }
                     }
@@ -567,6 +428,7 @@ public class TrainingProcessor implements ICommand {
         }
         return retVal;
     }
+
 
     /** Write all the parameters to a configuration file.
      *
@@ -653,12 +515,12 @@ public class TrainingProcessor implements ICommand {
                 // Here the model must be normalized.
                 log.info("Normalizing data using testing set.");
                 normalizer = new NormalizerStandardize();
-                normalizer.fit(this.testingSet);
-                normalizer.transform(this.testingSet);
+                normalizer.fit(this.getTestingSet());
+                normalizer.transform(this.getTestingSet());
                 reader.setNormalizer(normalizer);
             }
             // Now we build the model configuration.
-            LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(), this.channelCount);
+            LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(), this.getChannelCount());
             log.info("Building model configuration with input width {} and {} channels.",
                     widthComputer.getInWidth(), widthComputer.getChannels());
             NeuralNetConfiguration.ListBuilder configuration = new NeuralNetConfiguration.Builder()
@@ -736,7 +598,7 @@ public class TrainingProcessor implements ICommand {
             // We have multi-dimensional input, so we must flatten the width for the hidden layers.
             widthComputer.flatten();
             // Compute the hidden layers.
-            int outputCount = this.labels.size();
+            int outputCount = this.getLabels().size();
             for (int layerSize : this.denseLayers) {
                 // The new layer goes in here.
                 Layer newLayer;
@@ -825,11 +687,11 @@ public class TrainingProcessor implements ICommand {
                 parms.appendln("     Hidden layer configuration is %s.", this.denseLayers);
             if (this.rawMode)
                 parms.appendln("     Data normalization is turned off.");
-            if (this.channelMode)
+            if (this.isChannelMode())
                 parms.appendln("     Input uses channel vectors.");
             if (runStats.getSaveCount() == 0) {
                 parms.appendln("%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
-                this.bestAccuracy = 0;
+                this.clearAccuracy();
             } else {
                 this.accuracyReport(bestModel, parms);
             }
@@ -844,181 +706,6 @@ public class TrainingProcessor implements ICommand {
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }
-    }
-
-    /**
-     * Train and save the current model.
-     *
-     * @param normalizer	normalizer to use for the data
-     * @param model			model to train
-     *
-     * @return a RunStats describing the training results
-     *
-     * @throws IOException
-     */
-    public RunStats trainModel(DataNormalization normalizer, MultiLayerNetwork model) throws IOException {
-        this.reader.setBatchSize(this.batchSize);
-        long start = System.currentTimeMillis();
-        Trainer myTrainer = Trainer.create(this.method, this, log);
-        log.info("Starting trainer.");
-        RunStats runStats = myTrainer.trainModel(model, this.reader, testingSet);
-        runStats.setDuration(DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss"));
-        // Here we save the model.
-        if (runStats.getSaveCount() > 0) {
-            log.info("Saving model to {}.", this.modelName);
-            ModelSerializer.writeModel(runStats.getBestModel(), this.modelName, true, normalizer);
-        }
-        return runStats;
-    }
-
-    /**
-     * Write the accuracy report.
-     *
-     * @param bestModel		model chosen for the report
-     * @param buffer		text string buffer for report output
-     */
-    public void accuracyReport(MultiLayerNetwork bestModel, TextStringBuilder buffer) {
-        // Now we evaluate the model on the test set: compare the output to the actual
-        // values.
-        Evaluation eval = Trainer.evaluateModel(bestModel, this.testingSet, this.labels);
-        // Output the evaluation.
-        buffer.append(eval.stats());
-        ConfusionMatrix<Integer> matrix = eval.getConfusion();
-        // This last thing is the table of scores for each prediction.  This only makes sense if we have
-        // an "other" mode.
-        if (this.otherMode) {
-            int actualNegative = matrix.getActualTotal(0);
-            if (actualNegative == 0) {
-                buffer.appendln("No \"%s\" results were found.", this.labels.get(0));
-            } else {
-                double specificity = ((double) matrix.getCount(0, 0)) / actualNegative;
-                buffer.appendln("Model specificity is %11.4f.%n", specificity);
-            }
-            buffer.appendln("%-11s %11s %11s %11s %11s", "class", "accuracy", "sensitivity", "precision", "fallout");
-            buffer.appendln(StringUtils.repeat('-', 59));
-            // The classification accuracy is 1 - (false negative + false positive) / total,
-            // sensitivity is true positive / actual positive, precision is true positive / predicted positive,
-            // and fall-out is false positive / actual negative.
-            for (int i = 1; i < this.labels.size(); i++) {
-                String label = this.labels.get(i);
-                double accuracy = 1 - ((double) (matrix.getCount(0, i) + matrix.getCount(i,  0))) / this.testSize;
-                String sensitivity = formatRatio(matrix.getCount(i, i), matrix.getActualTotal(i));
-                String precision = formatRatio(matrix.getCount(i, i), matrix.getPredictedTotal(i));
-                String fallout = formatRatio(matrix.getCount(0,  i), actualNegative);
-                buffer.appendln("%-11s %11.4f %11s %11s %11s", label, accuracy, sensitivity, precision, fallout);
-            }
-        }
-        // Finally, save the accuracy in case SearchProcessor is running us.
-        this.bestAccuracy = eval.accuracy();
-    }
-
-    /**
-     * @return a string describing the parameters of the specified model, layer by layer
-     *
-     * @param model		the model to dump
-     */
-    public String dumpModel(MultiLayerNetwork model) {
-        TextStringBuilder retVal = new TextStringBuilder();
-        retVal.appendNewLine();
-        retVal.appendln("Model Parameter Summary");
-        org.deeplearning4j.nn.api.Layer[] layers = model.getLayers();
-        for (org.deeplearning4j.nn.api.Layer layer : layers) {
-            retVal.appendln("Layer %4d: %s", layer.getIndex(), layer.type());
-            Map<String, INDArray> params = layer.paramTable();
-            for (String pType : params.keySet()) {
-                INDArray pValue = params.get(pType);
-                String shape = ArrayUtils.toString(pValue.shape());
-                double min = Double.MAX_VALUE;
-                double max = -Double.MAX_VALUE;
-                double total = 0.0;
-                long count = 0;
-                long badCount = 0;
-                for (long i = 0; i < pValue.length(); i++) {
-                    double value = pValue.getDouble(i);
-                    if (! Double.isFinite(value))
-                        badCount++;
-                    else {
-                        if (min > value) min = value;
-                        if (max < value) max = value;
-                        total += value;
-                        count++;
-                    }
-                }
-                retVal.append("     %-12s: %-20s", pType, shape);
-                if (count == 0)
-                    retVal.appendln(" has no finite parameters");
-                else
-                    retVal.appendln(" min = %12.4g, mean = %12.4g, max = %12.4g, %d infinite values",
-                            min, total / count, max, badCount);
-            }
-        }
-        retVal.appendNewLine();
-        return retVal.toString();
-    }
-
-    /**
-     * Format a ratio for display in the evaluation metrics matrix.
-     *
-     * @param count		numerator
-     * @param total		denominator
-     *
-     * @return a formatted fraction, or an empty string if the denominator is 0
-     */
-    private static String formatRatio(int count, int total) {
-        String retVal = "";
-        if (total > 0) {
-            retVal = String.format("%11.4f", ((double) count) / total);
-        }
-        return retVal;
-    }
-
-    /**
-     * @return the optimization preference
-     */
-    public RunStats.OptimizationType getPreference() {
-        return preference;
-    }
-
-    /**
-     * @return the accuracy of the best epoch
-     */
-    public double getAccuracy() {
-        return bestAccuracy;
-    }
-
-    /**
-     * @return the recommended number of iterations
-     */
-    public int getIterations() {
-        return iterations;
-    }
-
-    /**
-     * @return the size of an example batch
-     */
-    public int getBatchSize() {
-        return batchSize;
-    }
-
-    /**
-     * @return the maximum number of batches to process
-     */
-    public int getMaxBatches() {
-        return maxBatches;
-    }
-
-    /**
-     * @return the label names for this model
-     */
-    public List<String> getLabels() {
-        return this.labels;
-    }
-
-    /**
-     * @return the early-stop limit
-     */
-    public int getEarlyStop() {
-        return this.earlyStop;
     }
 
 }

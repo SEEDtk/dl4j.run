@@ -11,7 +11,6 @@ import org.nd4j.evaluation.classification.Evaluation;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
-import org.theseed.dl4j.train.TrainingProcessor.RunStats;
 
 /**
  * This is an abstract base class for a trainer.  Trainers are used by processors to train a model and return

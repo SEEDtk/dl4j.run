@@ -8,7 +8,6 @@ import java.util.Iterator;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
-import org.theseed.dl4j.train.TrainingProcessor.RunStats;
 
 /**
  * This trainer processes the dataset in batch mode, one batch at a time with many iterations.
@@ -29,7 +28,6 @@ public class BatchTrainer extends Trainer {
         super(processor, log);
     }
 
-    //@Override
     /**
      * Train the model one batch at a time.
      *
@@ -39,8 +37,9 @@ public class BatchTrainer extends Trainer {
      *
      * @return a RunStats object describing our progress and success
      */
+    @Override
     public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet) {
-        RunStats retVal = new RunStats(model);
+        RunStats retVal = RunStats.create(model, this.processor.getPreference(), this);
         double oldScore = Double.MAX_VALUE;
         String process = processor.getIterations() + " iterations";
         while (reader.hasNext() && retVal.getEventCount() < processor.getMaxBatches() && ! retVal.isErrorStop()) {
@@ -60,7 +59,7 @@ public class BatchTrainer extends Trainer {
                 log.info("Score at end of batch {} is {}.", retVal.getEventCount(),
                         newScore);
             } else try {
-                this.processor.checkModel(model, testingSet, retVal, duration, newScore, this.eventsName(), process);
+                retVal.checkModel(model, testingSet, this.processor, duration, newScore, this.eventsName(), process);
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.
                 newScore = Double.NaN;

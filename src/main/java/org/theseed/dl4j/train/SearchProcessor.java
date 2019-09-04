@@ -18,6 +18,8 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.App;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
@@ -36,6 +38,9 @@ import org.theseed.utils.Parms;
  *
  */
 public class SearchProcessor implements ICommand {
+
+    /** logging facility */
+    private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
 
     // FIELDS
     /** iterator that runs through the parameter combinations */
@@ -126,7 +131,7 @@ public class SearchProcessor implements ICommand {
             // Count the iteration.
             iteration++;
         }
-        TrainingProcessor.log.info("** Best iteration was {} with accuracy {}.", bestIteration, bestAccuracy);
+        log.info("** Best iteration was {} with accuracy {}.", bestIteration, bestAccuracy);
         // Now display the result matrix.  First we compute the width for each column.
         int[] widths = new int[varMap.size() + 1];
         Arrays.fill(widths, 8);
@@ -151,10 +156,10 @@ public class SearchProcessor implements ICommand {
         buffer.appendln(boundary);
         // Write it to the output log.
         String report = buffer.toString();
-        TrainingProcessor.log.info(report);
+        log.info(report);
         // Write it to the trial file.
         try {
-            processor.writeTrialReport("Summary of Search-Mode Results", report);
+            RunStats.writeTrialReport(modelDir, "Summary of Search-Mode Results", report);
         } catch (IOException e) {
             System.err.println("Error writing trial.log:" + e.getMessage());
         }

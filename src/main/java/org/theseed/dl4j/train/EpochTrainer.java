@@ -10,7 +10,6 @@ import java.util.List;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
-import org.theseed.dl4j.train.TrainingProcessor.RunStats;
 
 /**
  * The epoch trainer reads the entire input file into memory, then runs all the batches through in an epoch
@@ -34,7 +33,7 @@ public class EpochTrainer extends Trainer {
 
     @Override
     public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet) {
-        RunStats retVal = new RunStats(model);
+        RunStats retVal = RunStats.create(model, this.processor.getPreference(), this);
         // Get all of the batches into a list, up to the maximum.
         log.info("Reading training data into memory.");
         List<DataSet> batches = new ArrayList<DataSet>();
@@ -60,11 +59,11 @@ public class EpochTrainer extends Trainer {
                         newScore, seconds, process);
                 retVal.uselessIteration();
             } else try {
-                this.processor.checkModel(model, testingSet, retVal, seconds, newScore, this.eventsName(), process);
+                retVal.checkModel(model, testingSet, this.processor, seconds, newScore, this.eventsName(), process);
             } catch (IllegalStateException e) {
-                // Here we had underflow in the evaluation.
-                newScore = Double.NaN;
+                // Here we had underflow in the evaluation.  Fake a score bounce.
                 log.warn("IllegalStateException: {}", e.getMessage());
+                retVal.error();
             }
             oldScore = newScore;
             // Force a stop if we have overflow or underflow.

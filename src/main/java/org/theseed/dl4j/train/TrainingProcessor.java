@@ -5,17 +5,19 @@ package org.theseed.dl4j.train;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DurationFormatUtils;
+import org.apache.commons.text.TextStringBuilder;
 import org.nd4j.evaluation.classification.ConfusionMatrix;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
@@ -140,6 +142,7 @@ import org.theseed.utils.IntegerList;
  * 				order with a near-constant size reduction
  * --weights	comma-delimited list of weights for the loss function, in label order; the default is
  * 				computed according to the proportions in the testing set
+ * --prefer		type of optimization preferred-- SCORE for the lowest score, ACCURACY for the highest accuracy
  *
  * For a convolution input layer, the following additional parameters are used.
  *
@@ -199,7 +202,7 @@ public class TrainingProcessor implements ICommand {
     private FloatList lossWeights;
 
     /** logging facility */
-    public static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
+    private static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
 
     // COMMAND LINE
 
@@ -370,137 +373,14 @@ public class TrainingProcessor implements ICommand {
         this.lossWeights = new FloatList(weightString);
     }
 
+    /** optimization preference */
+    @Option(name="--prefer", metaVar="SCORE", usage="model aspect to optimize during search")
+    private RunStats.OptimizationType preference;
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
-
-    /**
-     * Class to describe a fitting run.
-     */
-    public static class RunStats {
-        private boolean errorStop;
-        private int bounceCount;
-        private int eventCount;
-        private MultiLayerNetwork bestModel;
-        private int saveCount;
-        private int bestEvent;
-        private double bestAccuracy;
-        private int uselessEvents;
-        private double bestScore;
-
-        public RunStats(MultiLayerNetwork model) {
-            this.errorStop = false;
-            this.bounceCount = 0;
-            this.eventCount = 0;
-            this.bestModel = model;
-            this.bestEvent = 0;
-            this.saveCount = 0;
-            this.bestAccuracy = 0;
-            this.uselessEvents = 0;
-            this.bestScore = Double.MAX_VALUE;
-        }
-
-        /** Record a score bounce. */
-        public void bounce() {
-            this.bounceCount++;
-        }
-
-        /** Record a batch. */
-        public void event() {
-            this.eventCount++;
-        }
-
-        /** Record an error. */
-        public void error() {
-            this.errorStop = true;
-        }
-
-        /**
-         * @return the error-stop flag
-         */
-        public boolean isErrorStop() {
-            return errorStop;
-        }
-
-        /**
-         * @return the number of score bounces
-         */
-        public int getBounceCount() {
-            return bounceCount;
-        }
-
-        /**
-         * @return the number of events processed
-         */
-        public int getEventCount() {
-            return eventCount;
-        }
-
-        /**
-         * @return the score for the last model saved
-         */
-        public double getBestScore() {
-            return bestScore;
-        }
-
-        /**
-         * @return the best model found
-         */
-        public MultiLayerNetwork getBestModel() {
-            return bestModel;
-        }
-
-        /**
-         * @return the number of model saves
-         */
-        public int getSaveCount() {
-            return saveCount;
-        }
-
-        /**
-         * @return the event corresponding to the best model
-         */
-        public int getBestEvent() {
-            return bestEvent;
-        }
-
-        /**
-         * @return the accuracy of the best model
-         */
-        public double getBestAccuracy() {
-            return bestAccuracy;
-        }
-
-        /**
-         * Store the new best model.
-         * @param bestModel 	the new best model
-         * @param newScore
-         */
-        public void setBestModel(MultiLayerNetwork bestModel, double accuracy, double newScore) {
-            this.bestModel = bestModel;
-            this.bestAccuracy = accuracy;
-            this.bestScore = newScore;
-            this.bestEvent = this.eventCount;
-            this.saveCount++;
-            this.uselessEvents = 0;
-        }
-
-        /**
-         * @return the number of useless iterations so far
-         */
-        public int getUselessIterations() {
-            return this.uselessEvents;
-        }
-
-        /**
-         * Increment the count of useless iterations.
-         */
-        public void uselessIteration() {
-            this.uselessEvents++;
-        }
-
-    }
 
     /**
      * Parse command-line options to specify the parameters of this object.
@@ -548,6 +428,7 @@ public class TrainingProcessor implements ICommand {
         this.comment = null;
         this.otherMode = false;
         this.balancedLayers = 0;
+        this.preference = RunStats.OptimizationType.ACCURACY;
         this.lossWeights = new FloatList();
         // Clear the accuracy value.
         this.bestAccuracy = 0.0;
@@ -707,6 +588,9 @@ public class TrainingProcessor implements ICommand {
         String functions = Stream.of(Type.values()).map(Type::name).collect(Collectors.joining(", "));
         writer.format("## Valid training methods are %s.%n", functions);
         writer.format("--method %s\t# training set processing method%n", this.method.toString());
+        functions = Stream.of(RunStats.OptimizationType.values()).map(RunStats.OptimizationType::name).collect(Collectors.joining(", "));
+        writer.format("## Valid optimization preferences are %s.%n", functions);
+        writer.format("--prefer %s\t# optimization preference%n", this.preference);
         writer.format("--earlyStop %d\t# early-stop useless-iteration limit%n", this.earlyStop);
         if (this.denseLayers.isEmpty())
             writer.format("# --widths %d\t# configure number and widths of hidden layers%n", this.reader.getWidth());
@@ -895,22 +779,13 @@ public class TrainingProcessor implements ICommand {
             MultiLayerNetwork model = new MultiLayerNetwork(configuration.build());
             model.init();
             // Now  we train the model.
-            this.reader.setBatchSize(this.batchSize);
-            long start = System.currentTimeMillis();
-            Trainer myTrainer = Trainer.create(this.method, this, log);
-            log.info("Starting trainer.");
-            RunStats runStats = myTrainer.trainModel(model, this.reader, testingSet);
-            MultiLayerNetwork bestModel = runStats.bestModel;
-            String minutes = DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss");
-            // Here we save the model.
-            if (! runStats.isErrorStop()) {
-                log.info("Saving model to {}.", this.modelName);
-                ModelSerializer.writeModel(bestModel, this.modelName, true, normalizer);
-            }
+            RunStats runStats = trainModel(normalizer, model);
             // Display the configuration.
-           StringBuilder parms = new StringBuilder();
-            parms.append(String.format(
-                            "%n=========================== Parameters ===========================%n" +
+            MultiLayerNetwork bestModel = runStats.getBestModel();
+            TextStringBuilder parms = new TextStringBuilder();
+            parms.appendNewLine();
+            parms.appendln(
+                            "=========================== Parameters ===========================%n" +
                             "     iterations  = %12d, batch size    = %12d%n" +
                             "     test size   = %12d, seed number   = %12d%n" +
                             "     subsampling = %12d%n" +
@@ -934,96 +809,151 @@ public class TrainingProcessor implements ICommand {
                            this.weightInitMethod.toString(), this.weightUpdateMethod.toString(), this.learnRate,
                            this.initActivationType.toString(), this.activationType.toString(),
                            outActivation.toString(), this.lossFunction.toString(),
-                           this.lossWeights.toString(), minutes, runStats.getEventCount(),
-                           myTrainer.eventsName(), runStats.getBestEvent(), runStats.getBounceCount(),
-                           runStats.getSaveCount()));
+                           this.lossWeights.toString(), runStats.getDuration(), runStats.getEventCount(),
+                           runStats.getEventsName(), runStats.getBestEvent(), runStats.getBounceCount(),
+                           runStats.getSaveCount());
             if (! this.convolutions.isEmpty()) {
-                parms.append(String.format("%n     Convolution layers used with kernel sizes %s", this.convolutions));
-                parms.append(String.format("%n     Convolutions used filter sizes %s and strides %s.",
-                        this.filterSizes, this.strides));
+                parms.appendln("     Convolution layers used with kernel sizes %s", this.convolutions);
+                parms.appendln("     Convolutions used filter sizes %s and strides %s.",
+                        this.filterSizes, this.strides);
             }
             if (this.batchNormFlag)
-                parms.append(String.format("%n     Batch normalization applied."));
+                parms.appendln("     Batch normalization applied.");
             if (this.denseLayers.isEmpty())
-                parms.append(String.format("%n     No hidden layers used."));
+                parms.appendln("     No hidden layers used.");
             else
-                parms.append(String.format("%n     Hidden layer configuration is %s.", this.denseLayers));
+                parms.appendln("     Hidden layer configuration is %s.", this.denseLayers);
             if (this.rawMode)
-                parms.append(String.format("%n     Data normalization is turned off."));
+                parms.appendln("     Data normalization is turned off.");
             if (this.channelMode)
-                parms.append(String.format("%n     Input uses channel vectors."));
-            if (runStats.isErrorStop()) {
-                parms.append(String.format("%n%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW."));
+                parms.appendln("     Input uses channel vectors.");
+            if (runStats.getSaveCount() == 0) {
+                parms.appendln("%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
                 this.bestAccuracy = 0;
             } else {
-                // Now we evaluate the model on the test set: compare the output to the actual
-                // values.
-                Evaluation eval = Trainer.evaluateModel(bestModel, this.testingSet, this.labels);
-                // Output the evaluation.
-                parms.append(eval.stats());
-                ConfusionMatrix<Integer> matrix = eval.getConfusion();
-                // This last thing is the table of scores for each prediction.  This only makes sense if we have
-                // an "other" mode.
-                if (this.otherMode) {
-                    int actualNegative = matrix.getActualTotal(0);
-                    if (actualNegative == 0) {
-                        parms.append(String.format("%nNo \"%s\" results were found.%n", this.labels.get(0)));
-                    } else {
-                        double specificity = ((double) matrix.getCount(0, 0)) / actualNegative;
-                        parms.append(String.format("%nModel specificity is %11.4f.%n", specificity));
-                    }
-                    parms.append(String.format("%n%-11s %11s %11s %11s %11s%n", "class", "accuracy", "sensitivity", "precision", "fallout"));
-                    parms.append(StringUtils.repeat('-', 59));
-                    // The classification accuracy is 1 - (false negative + false positive) / total,
-                    // sensitivity is true positive / actual positive, precision is true positive / predicted positive,
-                    // and fall-out is false positive / actual negative.
-                    for (int i = 1; i < this.labels.size(); i++) {
-                        String label = this.labels.get(i);
-                        double accuracy = 1 - ((double) (matrix.getCount(0, i) + matrix.getCount(i,  0))) / this.testSize;
-                        String sensitivity = formatRatio(matrix.getCount(i, i), matrix.getActualTotal(i));
-                        String precision = formatRatio(matrix.getCount(i, i), matrix.getPredictedTotal(i));
-                        String fallout = formatRatio(matrix.getCount(0,  i), actualNegative);
-                        parms.append(String.format("%n%-11s %11.4f %11s %11s %11s", label, accuracy, sensitivity, precision, fallout));
-                    }
-                }
-                // Finally, save the accuracy in case SearchProcessor is running us.
-                this.bestAccuracy = eval.accuracy();
+                this.accuracyReport(bestModel, parms);
             }
             // Add the summary.
-            parms.append(bestModel.summary(inputShape));
+            parms.appendln(bestModel.summary(inputShape));
+            // Add the parameter dump.
+            parms.append(this.dumpModel(bestModel));
+            // Output the result.
             String report = parms.toString();
             log.info(report);
-            writeTrialReport(this.comment, report);
+            RunStats.writeTrialReport(this.modelDir, this.comment, report);
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }
     }
 
     /**
-     * Check the model to see if we need to save this as the best model so far.
+     * Train and save the current model.
      *
-     * @param model			current state of the model
-     * @param testingSet	testing set for evaluating the model
-     * @param runStats		current status of the training
-     * @param seconds		number of seconds spent processing this section
-     * @param newScore		latest score
-     * @param eventType		label to use for events
-     * @param processType	label to use for processing
+     * @param normalizer	normalizer to use for the data
+     * @param model			model to train
+     *
+     * @return a RunStats describing the training results
+     *
+     * @throws IOException
      */
-    public void checkModel(MultiLayerNetwork model, DataSet testingSet, RunStats runStats,
-            double seconds, double newScore, String eventType, String processType) {
-        Evaluation eval = Trainer.evaluateModel(model, testingSet, this.getLabels());
-        double newAccuracy = eval.accuracy();
-        String saveFlag = "";
-        if (newAccuracy > runStats.getBestAccuracy()) {
-            runStats.setBestModel(model.clone(), newAccuracy, newScore);
-            saveFlag = "  Model saved.";
-        } else {
-            saveFlag = String.format("  Best was %g in %d.", runStats.getBestAccuracy(), runStats.getBestEvent());
-            runStats.uselessIteration();
+    public RunStats trainModel(DataNormalization normalizer, MultiLayerNetwork model) throws IOException {
+        this.reader.setBatchSize(this.batchSize);
+        long start = System.currentTimeMillis();
+        Trainer myTrainer = Trainer.create(this.method, this, log);
+        log.info("Starting trainer.");
+        RunStats runStats = myTrainer.trainModel(model, this.reader, testingSet);
+        runStats.setDuration(DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss"));
+        // Here we save the model.
+        if (runStats.getSaveCount() > 0) {
+            log.info("Saving model to {}.", this.modelName);
+            ModelSerializer.writeModel(runStats.getBestModel(), this.modelName, true, normalizer);
         }
-        log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",
-                runStats.getEventCount(), eventType, newScore, seconds, processType, newAccuracy, saveFlag);
+        return runStats;
+    }
+
+    /**
+     * Write the accuracy report.
+     *
+     * @param bestModel		model chosen for the report
+     * @param buffer		text string buffer for report output
+     */
+    public void accuracyReport(MultiLayerNetwork bestModel, TextStringBuilder buffer) {
+        // Now we evaluate the model on the test set: compare the output to the actual
+        // values.
+        Evaluation eval = Trainer.evaluateModel(bestModel, this.testingSet, this.labels);
+        // Output the evaluation.
+        buffer.append(eval.stats());
+        ConfusionMatrix<Integer> matrix = eval.getConfusion();
+        // This last thing is the table of scores for each prediction.  This only makes sense if we have
+        // an "other" mode.
+        if (this.otherMode) {
+            int actualNegative = matrix.getActualTotal(0);
+            if (actualNegative == 0) {
+                buffer.appendln("No \"%s\" results were found.", this.labels.get(0));
+            } else {
+                double specificity = ((double) matrix.getCount(0, 0)) / actualNegative;
+                buffer.appendln("Model specificity is %11.4f.%n", specificity);
+            }
+            buffer.appendln("%-11s %11s %11s %11s %11s", "class", "accuracy", "sensitivity", "precision", "fallout");
+            buffer.appendln(StringUtils.repeat('-', 59));
+            // The classification accuracy is 1 - (false negative + false positive) / total,
+            // sensitivity is true positive / actual positive, precision is true positive / predicted positive,
+            // and fall-out is false positive / actual negative.
+            for (int i = 1; i < this.labels.size(); i++) {
+                String label = this.labels.get(i);
+                double accuracy = 1 - ((double) (matrix.getCount(0, i) + matrix.getCount(i,  0))) / this.testSize;
+                String sensitivity = formatRatio(matrix.getCount(i, i), matrix.getActualTotal(i));
+                String precision = formatRatio(matrix.getCount(i, i), matrix.getPredictedTotal(i));
+                String fallout = formatRatio(matrix.getCount(0,  i), actualNegative);
+                buffer.appendln("%-11s %11.4f %11s %11s %11s", label, accuracy, sensitivity, precision, fallout);
+            }
+        }
+        // Finally, save the accuracy in case SearchProcessor is running us.
+        this.bestAccuracy = eval.accuracy();
+    }
+
+    /**
+     * @return a string describing the parameters of the specified model, layer by layer
+     *
+     * @param model		the model to dump
+     */
+    public String dumpModel(MultiLayerNetwork model) {
+        TextStringBuilder retVal = new TextStringBuilder();
+        retVal.appendNewLine();
+        retVal.appendln("Model Parameter Summary");
+        org.deeplearning4j.nn.api.Layer[] layers = model.getLayers();
+        for (org.deeplearning4j.nn.api.Layer layer : layers) {
+            retVal.appendln("Layer %4d: %s", layer.getIndex(), layer.type());
+            Map<String, INDArray> params = layer.paramTable();
+            for (String pType : params.keySet()) {
+                INDArray pValue = params.get(pType);
+                String shape = ArrayUtils.toString(pValue.shape());
+                double min = Double.MAX_VALUE;
+                double max = -Double.MAX_VALUE;
+                double total = 0.0;
+                long count = 0;
+                long badCount = 0;
+                for (long i = 0; i < pValue.length(); i++) {
+                    double value = pValue.getDouble(i);
+                    if (! Double.isFinite(value))
+                        badCount++;
+                    else {
+                        if (min > value) min = value;
+                        if (max < value) max = value;
+                        total += value;
+                        count++;
+                    }
+                }
+                retVal.append("     %-12s: %-20s", pType, shape);
+                if (count == 0)
+                    retVal.appendln(" has no finite parameters");
+                else
+                    retVal.appendln(" min = %12.4g, mean = %12.4g, max = %12.4g, %d infinite values",
+                            min, total / count, max, badCount);
+            }
+        }
+        retVal.appendNewLine();
+        return retVal.toString();
     }
 
     /**
@@ -1032,7 +962,7 @@ public class TrainingProcessor implements ICommand {
      * @param count		numerator
      * @param total		denominator
      *
-     * @return a formatted fraction, or an empty string if the denominator is 9
+     * @return a formatted fraction, or an empty string if the denominator is 0
      */
     private static String formatRatio(int count, int total) {
         String retVal = "";
@@ -1043,22 +973,10 @@ public class TrainingProcessor implements ICommand {
     }
 
     /**
-     * Write a report to the trial log.
-     *
-     * @param label	heading comment, if any
-     * @param report	text of the report to write, with internal new-lines
-     *
-     * @throws IOException
+     * @return the optimization preference
      */
-    public void writeTrialReport(String label, String report) throws IOException {
-        // Open the trials log in append mode and write the information about this run.
-        File trials = new File(modelDir, "trials.log");
-        PrintWriter trialWriter = new PrintWriter(new FileWriter(trials, true));
-        trialWriter.println("******************************************************************");
-        if (label != null)
-            trialWriter.print(label);
-        trialWriter.println(report);
-        trialWriter.close();
+    public RunStats.OptimizationType getPreference() {
+        return preference;
     }
 
     /**
@@ -1102,4 +1020,5 @@ public class TrainingProcessor implements ICommand {
     public int getEarlyStop() {
         return this.earlyStop;
     }
+
 }

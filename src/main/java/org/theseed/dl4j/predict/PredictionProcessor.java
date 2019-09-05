@@ -140,7 +140,7 @@ public class PredictionProcessor implements ICommand {
                         this.metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
                         // Read in the model and the normalizer.
                         if (this.modelName == null)
-                            this.modelName = new File(modelDir, "model.ser");
+                            this.modelName = new File(this.modelDir, "model.ser");
                         this.model = ModelSerializer.restoreMultiLayerNetwork(this.modelName, false);
                         DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(this.modelName);
                         // Determine the input type and get the appropriate reader.

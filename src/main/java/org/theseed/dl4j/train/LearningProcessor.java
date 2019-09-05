@@ -1,7 +1,9 @@
 package org.theseed.dl4j.train;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -357,6 +359,30 @@ public class LearningProcessor {
                     this.testSize, this.getTestingSet().numExamples());
             throw new IllegalArgumentException("No training data.");
         }
+    }
+
+    /**
+     * Set up the training file for processing.
+     *
+     * @throws FileNotFoundException
+     * @throws IOException
+     */
+    public void setupTraining() throws FileNotFoundException, IOException {
+        // Read in the labels from the label file.
+        File labelFile = new File(this.modelDir, "labels.txt");
+        if (! labelFile.exists())
+            throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
+        this.setLabels(TabbedDataSetReader.readLabels(labelFile));
+        log.info("{} labels read from label file.", this.getLabels().size());
+        // Parse the metadata column list.
+        List<String> metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
+        // Finally, we initialize the input to get the label and metadata columns handled.
+        if (this.trainingFile == null) {
+            this.trainingFile = new File(this.modelDir, "training.tbl");
+            if (! this.trainingFile.exists())
+                throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
+        }
+        initializeReader(metaList);
     }
 
     /**

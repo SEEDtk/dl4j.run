@@ -7,12 +7,9 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.Arrays;
-import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
@@ -40,7 +37,6 @@ import org.theseed.dl4j.CnnToRnnSequencePreprocessor;
 import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.Regularization;
 import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
-import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.dl4j.train.Trainer.Type;
 import org.theseed.utils.FloatList;
 import org.theseed.utils.ICommand;
@@ -328,97 +324,81 @@ public class TrainingProcessor extends LearningProcessor implements ICommand {
                 if (! this.modelDir.isDirectory()) {
                     throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 } else {
-                    // Read in the labels from the label file.
-                    File labelFile = new File(this.modelDir, "labels.txt");
-                    if (! labelFile.exists()) {
-                        throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
-                    } else {
-                        this.setLabels(TabbedDataSetReader.readLabels(labelFile));
-                        log.info("{} labels read from label file.", this.getLabels().size());
-                        // Parse the metadata column list.
-                        List<String> metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
-                        // Finally, we initialize the input to get the label and metadata columns handled.
-                        if (this.trainingFile == null) {
-                            this.trainingFile = new File(this.modelDir, "training.tbl");
-                            if (! this.trainingFile.exists())
-                                throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
+                    this.setupTraining();
+                    // Check the loss function.
+                    if (this.lossFunction.isBinaryOnly() && this.getLabels().size() > 2)
+                        throw new IllegalArgumentException(this.lossFunction + " is for binary classification but there are " +
+                                this.getLabels().size() + " classes.");
+                    if (this.lossWeights.isEmpty()) {
+                        // Here we need to default the list to the distribution in the testing set.
+                        log.info("Computing loss function weights from testing set.");
+                        double[] buffer = new double[this.getLabels().size()];
+                        INDArray labelSums = this.getTestingSet().getLabels().sum(0);
+                        double base = labelSums.maxNumber().doubleValue();
+                        for (int i = 0; i < buffer.length; i++)
+                            buffer[i] = labelSums.getDouble(i) / base;
+                        this.lossWeights = new FloatList(buffer);
+                    } else if (this.lossWeights.size() != this.getLabels().size())
+                        throw new IllegalArgumentException("The number of loss weights must match the number of labels.");
+                    // Insure the number of filters or strides is not greater than the number of convolutions.
+                    if (! this.convolutions.isEmpty()) {
+                        if (this.filterSizes.size() > this.convolutions.size())
+                            throw new IllegalArgumentException("Cannot have more filters than convolution layers.");
+                        if (this.strides.size() > this.convolutions.size())
+                            throw new IllegalArgumentException("Cannot have more strides than convolution layers.");
+                    }
+                    // Verify that the sub-sampling factor is in range. This requires us to compute
+                    // the effect of the various input layers.  We need this for the
+                    // balanced-layer computation, too.
+                    LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(),
+                            this.getChannelCount());
+                    if (! this.convolutions.isEmpty()) {
+                        int strideFactor = this.strides.first();
+                        int filters = this.filterSizes.first();
+                        // Compute the width after the last convolution.
+                        for (int cWidth : this.convolutions) {
+                            widthComputer.applyConvolution(cWidth, strideFactor, filters);
+                            strideFactor = this.strides.softNext();
+                            filters = this.filterSizes.softNext();
                         }
-                        // Check the loss function.
-                        if (this.lossFunction.isBinaryOnly() && this.getLabels().size() > 2)
-                            throw new IllegalArgumentException(this.lossFunction + " is for binary classification but there are " +
-                                    this.getLabels().size() + " classes.");
-                        initializeReader(metaList);
-                        if (this.lossWeights.isEmpty()) {
-                            // Here we need to default the list to the distribution in the testing set.
-                            log.info("Computing loss function weights from testing set.");
-                            double[] buffer = new double[this.getLabels().size()];
-                            INDArray labelSums = this.getTestingSet().getLabels().sum(0);
-                            double base = labelSums.maxNumber().doubleValue();
-                            for (int i = 0; i < buffer.length; i++)
-                                buffer[i] = labelSums.getDouble(i) / base;
-                            this.lossWeights = new FloatList(buffer);
-                        } else if (this.lossWeights.size() != this.getLabels().size())
-                            throw new IllegalArgumentException("The number of loss weights must match the number of labels.");
-                        // Insure the number of filters or strides is not greater than the number of convolutions.
-                        if (! this.convolutions.isEmpty()) {
-                            if (this.filterSizes.size() > this.convolutions.size())
-                                throw new IllegalArgumentException("Cannot have more filters than convolution layers.");
-                            if (this.strides.size() > this.convolutions.size())
-                                throw new IllegalArgumentException("Cannot have more strides than convolution layers.");
-                        }
-                        // Verify that the sub-sampling factor is in range. This requires us to compute
-                        // the effect of the various input layers.  We need this for the
-                        // balanced-layer computation, too.
-                        LayerWidths widthComputer = new LayerWidths(this.reader.getWidth(),
-                                this.getChannelCount());
-                        if (! this.convolutions.isEmpty()) {
-                            int strideFactor = this.strides.first();
-                            int filters = this.filterSizes.first();
-                            // Compute the width after the last convolution.
-                            for (int cWidth : this.convolutions) {
-                                widthComputer.applyConvolution(cWidth, strideFactor, filters);
-                                strideFactor = this.strides.softNext();
-                                filters = this.filterSizes.softNext();
-                            }
-                            if (widthComputer.getOutWidth() < 1) {
-                                throw new IllegalArgumentException("Convolution stride is too big, output width less than 1.");
-                            } else if (widthComputer.getOutWidth() <= this.subFactor) {
-                                throw new IllegalArgumentException("Subsampling factor must be less than " +
-                                        widthComputer.getOutWidth() + " in this configuration.");
-                            } else if (this.subFactor > 1) {
-                                widthComputer.applySubsampling(this.subFactor);
-                            }
-                        }
-                        // Flatten any leftover channel depth.
-                        widthComputer.flatten();
-                        // If we have balanced layers, we need to compute the hidden layer widths
-                        // here.
-                        if (this.balancedLayers > 0) {
-                            // Compute the balanced layer widths.
-                            int[] widths = widthComputer.balancedLayers(this.balancedLayers, this.getLabels().size());
-                            this.denseLayers = new IntegerList(widths);
+                        if (widthComputer.getOutWidth() < 1) {
+                            throw new IllegalArgumentException("Convolution stride is too big, output width less than 1.");
+                        } else if (widthComputer.getOutWidth() <= this.subFactor) {
+                            throw new IllegalArgumentException("Subsampling factor must be less than " +
+                                    widthComputer.getOutWidth() + " in this configuration.");
+                        } else if (this.subFactor > 1) {
+                            widthComputer.applySubsampling(this.subFactor);
                         }
                     }
+                    // Flatten any leftover channel depth.
+                    widthComputer.flatten();
+                    // If we have balanced layers, we need to compute the hidden layer widths
+                    // here.
+                    if (this.balancedLayers > 0) {
+                        // Compute the balanced layer widths.
+                        int[] widths = widthComputer.balancedLayers(this.balancedLayers, this.getLabels().size());
+                        this.denseLayers = new IntegerList(widths);
+                    }
                 }
-                // Save the regularization configuration.
-                this.regulizer = new Regularization(this.regMode, this.regFactor);
-                // Compute the model file name if it is defaulting.
-                if (this.modelName == null)
-                    this.modelName = new File(this.modelDir, "model.ser");
-                // If the user asked for a configuration file, write it here.
-                if (this.parmFile != null) writeParms(this.parmFile);
-                // Correct the early stop value.
-                if (this.earlyStop == 0) this.earlyStop = Integer.MAX_VALUE;
-                // Correct the Nesterov learning rate for the weight updater.  The default here is 0.1, not 1e-3
-                this.realLearningRate = this.learnRate;
-                if (this.weightUpdateMethod == GradientUpdater.Type.NESTEROVS)
-                    this.realLearningRate *= 100;
-                // Write out the comment.
-                if (this.comment != null)
-                    log.info("*** {}", this.comment);
-                // We made it this far, we can run the application.
-                retVal = true;
             }
+            // Save the regularization configuration.
+            this.regulizer = new Regularization(this.regMode, this.regFactor);
+            // Compute the model file name if it is defaulting.
+            if (this.modelName == null)
+                this.modelName = new File(this.modelDir, "model.ser");
+            // If the user asked for a configuration file, write it here.
+            if (this.parmFile != null) writeParms(this.parmFile);
+            // Correct the early stop value.
+            if (this.earlyStop == 0) this.earlyStop = Integer.MAX_VALUE;
+            // Correct the Nesterov learning rate for the weight updater.  The default here is 0.1, not 1e-3
+            this.realLearningRate = this.learnRate;
+            if (this.weightUpdateMethod == GradientUpdater.Type.NESTEROVS)
+                this.realLearningRate *= 100;
+            // Write out the comment.
+            if (this.comment != null)
+                log.info("*** {}", this.comment);
+            // We made it this far, we can run the application.
+            retVal = true;
         } catch (CmdLineException e) {
             System.err.println(e.getMessage());
             // For parameter errors, we display the command usage.
@@ -428,6 +408,7 @@ public class TrainingProcessor extends LearningProcessor implements ICommand {
         }
         return retVal;
     }
+
 
 
     /** Write all the parameters to a configuration file.

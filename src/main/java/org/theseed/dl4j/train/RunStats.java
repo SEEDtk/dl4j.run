@@ -288,7 +288,8 @@ abstract public class RunStats {
                 this.setBestModel(model.clone(), newAccuracy, newScore);
                 saveFlag = "  Model saved.";
             } else {
-                saveFlag = String.format("  Best was %g in %d.", this.getBestScore(), this.getBestEvent());
+                saveFlag = String.format("  Best score was %g in %d with accuracy %g.", this.getBestScore(), this.getBestEvent(),
+                        this.getBestAccuracy());
                 this.uselessIteration();
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",
@@ -326,7 +327,8 @@ abstract public class RunStats {
                 this.setBestModel(model.clone(), newAccuracy, newScore);
                 saveFlag = "  Model saved.";
             } else {
-                saveFlag = String.format("  Best was %g in %d.", this.getBestAccuracy(), this.getBestEvent());
+                saveFlag = String.format("  Best accuracy was %g in %d with score %g.", this.getBestAccuracy(),
+                        this.getBestEvent(), this.getBestScore());
                 this.uselessIteration();
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",

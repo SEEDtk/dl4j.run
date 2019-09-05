@@ -8,6 +8,7 @@ import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.theseed.dl4j.predict.PredictionProcessor;
+import org.theseed.dl4j.train.ImproveProcessor;
 import org.theseed.dl4j.train.SearchProcessor;
 import org.theseed.dl4j.train.TrainingProcessor;
 import org.theseed.utils.ICommand;
@@ -63,6 +64,10 @@ public class App
                 runObject = new SearchProcessor();
                 success = execute(runObject, args);
                 break;
+            case "improve" :
+                runObject = new ImproveProcessor();
+                success = execute(runObject, args);
+                break;
             case "--help" :
             case "-h" :
             case "help" :
@@ -74,8 +79,13 @@ public class App
                 System.err.println("Command code \"predict\":");
                 runObject = new PredictionProcessor();
                 execute(runObject, args);
+                System.err.println();
                 System.err.println("Command code \"search\":");
                 runObject = new SearchProcessor();
+                execute(runObject, args);
+                System.err.println();
+                System.err.println("Command code \"improve\":");
+                runObject = new ImproveProcessor();
                 execute(runObject, args);
                 break;
             default :

@@ -671,7 +671,8 @@ public class TrainingProcessor extends LearningProcessor implements ICommand {
             if (this.isChannelMode())
                 parms.appendln("     Input uses channel vectors.");
             if (runStats.getSaveCount() == 0) {
-                parms.appendln("%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
+                parms.appendNewLine();
+                parms.appendln("MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
                 this.clearAccuracy();
             } else {
                 this.accuracyReport(bestModel, parms);

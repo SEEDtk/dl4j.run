@@ -174,7 +174,7 @@ public class LearningProcessor {
         // values.
         Evaluation eval = Trainer.evaluateModel(bestModel, this.getTestingSet(), this.getLabels());
         // Output the evaluation.
-        buffer.append(eval.stats());
+        buffer.appendln(eval.stats());
         ConfusionMatrix<Integer> matrix = eval.getConfusion();
         // This last thing is the table of scores for each prediction.  This only makes sense if we have
         // an "other" mode.
@@ -239,9 +239,14 @@ public class LearningProcessor {
                 retVal.append("     %-12s: %-20s", pType, shape);
                 if (count == 0)
                     retVal.appendln(" has no finite parameters");
-                else
-                    retVal.appendln(" min = %12.4g, mean = %12.4g, max = %12.4g, %d infinite values",
-                            min, total / count, max, badCount);
+                else {
+                    retVal.append(" min = %12.4g, mean = %12.4g, max = %12.4g",
+                            min, total / count, max);
+                    if (badCount > 0)
+                        retVal.appendln(", %d infinite values", badCount);
+                    else
+                        retVal.appendNewLine();
+                }
             }
         }
         retVal.appendNewLine();

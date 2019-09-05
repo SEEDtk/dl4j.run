@@ -3,10 +3,12 @@
  */
 package org.theseed.dl4j.train;
 
+import org.nd4j.linalg.learning.config.AMSGrad;
 import org.nd4j.linalg.learning.config.Adam;
 import org.nd4j.linalg.learning.config.IUpdater;
 import org.nd4j.linalg.learning.config.Nadam;
 import org.nd4j.linalg.learning.config.Nesterovs;
+import org.nd4j.linalg.learning.config.RmsProp;
 import org.nd4j.linalg.learning.config.Sgd;
 
 /**
@@ -18,7 +20,7 @@ import org.nd4j.linalg.learning.config.Sgd;
 public class GradientUpdater {
 
     public static enum Type {
-        ADAM, NADAM, NESTEROVS, SGD
+        ADAM, AMSGRAD, NADAM, NESTEROVS, RMSPROP, SGD
     }
 
     /**
@@ -33,11 +35,17 @@ public class GradientUpdater {
         case ADAM :
             retVal = new Adam(learningRate);
             break;
+        case AMSGRAD :
+            retVal = new AMSGrad(learningRate);
+            break;
         case NADAM :
             retVal = new Nadam(learningRate);
             break;
         case NESTEROVS :
             retVal = new Nesterovs(learningRate, Nesterovs.DEFAULT_NESTEROV_MOMENTUM);
+            break;
+        case RMSPROP :
+            retVal = new RmsProp(learningRate);
             break;
         case SGD :
             retVal = new Sgd(learningRate);

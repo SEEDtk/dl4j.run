@@ -43,7 +43,6 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 } else {
                     this.setupTraining();
                 }
-                // TODO more parameter processing
                 // We made it this far, we can run the application.
                 retVal = true;
             }

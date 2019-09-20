@@ -380,25 +380,25 @@ public class TrainingProcessor extends LearningProcessor implements ICommand {
                         this.denseLayers = new IntegerList(widths);
                     }
                 }
+                // Save the regularization configuration.
+                this.regulizer = new Regularization(this.regMode, this.regFactor);
+                // Compute the model file name if it is defaulting.
+                if (this.modelName == null)
+                    this.modelName = new File(this.modelDir, "model.ser");
+                // If the user asked for a configuration file, write it here.
+                if (this.parmFile != null) writeParms(this.parmFile);
+                // Correct the early stop value.
+                if (this.earlyStop == 0) this.earlyStop = Integer.MAX_VALUE;
+                // Correct the Nesterov learning rate for the weight updater.  The default here is 0.1, not 1e-3
+                this.realLearningRate = this.learnRate;
+                if (this.weightUpdateMethod == GradientUpdater.Type.NESTEROVS)
+                    this.realLearningRate *= 100;
+                // Write out the comment.
+                if (this.comment != null)
+                    log.info("*** {}", this.comment);
+                // We made it this far, we can run the application.
+                retVal = true;
             }
-            // Save the regularization configuration.
-            this.regulizer = new Regularization(this.regMode, this.regFactor);
-            // Compute the model file name if it is defaulting.
-            if (this.modelName == null)
-                this.modelName = new File(this.modelDir, "model.ser");
-            // If the user asked for a configuration file, write it here.
-            if (this.parmFile != null) writeParms(this.parmFile);
-            // Correct the early stop value.
-            if (this.earlyStop == 0) this.earlyStop = Integer.MAX_VALUE;
-            // Correct the Nesterov learning rate for the weight updater.  The default here is 0.1, not 1e-3
-            this.realLearningRate = this.learnRate;
-            if (this.weightUpdateMethod == GradientUpdater.Type.NESTEROVS)
-                this.realLearningRate *= 100;
-            // Write out the comment.
-            if (this.comment != null)
-                log.info("*** {}", this.comment);
-            // We made it this far, we can run the application.
-            retVal = true;
         } catch (CmdLineException e) {
             System.err.println(e.getMessage());
             // For parameter errors, we display the command usage.

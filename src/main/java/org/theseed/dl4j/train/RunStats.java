@@ -284,7 +284,7 @@ abstract public class RunStats {
             Evaluation eval = Trainer.evaluateModel(model, testingSet, processor.getLabels());
             double newAccuracy = eval.accuracy();
             String saveFlag = "";
-            if (newScore < this.getBestScore()) {
+            if (newScore < this.getBestScore() || newScore == this.getBestScore() && newAccuracy > this.getBestAccuracy()) {
                 this.setBestModel(model.clone(), newAccuracy, newScore);
                 saveFlag = "  Model saved.";
             } else {
@@ -323,7 +323,7 @@ abstract public class RunStats {
             Evaluation eval = Trainer.evaluateModel(model, testingSet, processor.getLabels());
             double newAccuracy = eval.accuracy();
             String saveFlag = "";
-            if (newAccuracy > this.getBestAccuracy()) {
+            if (newAccuracy > this.getBestAccuracy() || newAccuracy == this.getBestAccuracy() && newScore < this.getBestScore()) {
                 this.setBestModel(model.clone(), newAccuracy, newScore);
                 saveFlag = "  Model saved.";
             } else {

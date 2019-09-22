@@ -166,7 +166,10 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      * @param string	input string to convert
      */
     protected double[] stringToVector(String string) {
-        return this.channelMap.get(string);
+        double[] retVal = this.channelMap.get(string);
+        if (retVal == null)
+            throw new IllegalArgumentException("Invalid channel value \"" + string + "\" in input.");
+        return retVal;
     }
 
     /**

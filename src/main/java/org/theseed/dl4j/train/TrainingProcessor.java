@@ -564,20 +564,22 @@ public class TrainingProcessor extends LearningProcessor implements ICommand {
                 configuration.inputPreProcessor(layerIdx, new RnnSequenceToFeedForwardPreProcessor());
                 inputLayerCreated = true;
             }
-            if (! inputLayerCreated) {
-                // We have a 2D shape, and no automatic input type to flatten it, so we need
-                // to set up a flattener.
+            if (! inputLayerCreated || this.batchNormFlag) {
+                // We need a 2D shape, and no one is going to flatten it, so we need to set up a flattener.
                 configuration.inputPreProcessor(layerIdx, new CnnToFeedForwardPreProcessor(1, widthComputer.getOutWidth(),
                         widthComputer.getChannels()));
-            }
-            // Add batch normalization if desired.
-            if (this.batchNormFlag) {
-                log.info("Adding batch normalization layer.");
-                int width = widthComputer.getOutWidth();
-                configuration.layer(new BatchNormalization.Builder().nIn(width).nOut(width).build());
+                widthComputer.flatten();
+                // Add batch normalization if desired.
+                if (this.batchNormFlag) {
+                    log.info("Adding batch normalization layer.");
+                    int width = widthComputer.getOutWidth();
+                    configuration.layer(new BatchNormalization.Builder().nIn(width).nOut(width).build());
+                }
+            } else {
+                // It will be automatically flattened, so we need to update the width computation.
+                widthComputer.flatten();
             }
             // We have multi-dimensional input, so we must flatten the width for the hidden layers.
-            widthComputer.flatten();
             // Compute the hidden layers.
             int outputCount = this.getLabels().size();
             for (int layerSize : this.denseLayers) {

@@ -11,8 +11,8 @@ import static org.hamcrest.Matchers.*;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.ArrayUtils;
@@ -141,7 +141,7 @@ public class AppTest extends TestCase
      */
     public void testChannelReader() throws IOException {
         File channelFile = new File("src/test", "channels.tbl");
-        HashMap<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+        Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
         assertThat(collect(channelMap.get("a")), contains(1.0, 0.0, 0.0, 0.0));
         assertThat(collect(channelMap.get("X")), contains(0.25, 0.25, 0.25, 0.25));
         assertThat(collect(channelMap.get("y")), contains(0.0, 0.5, 0.0, 0.5));

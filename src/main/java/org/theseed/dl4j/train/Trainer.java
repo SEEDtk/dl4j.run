@@ -4,11 +4,7 @@
 package org.theseed.dl4j.train;
 
 import java.util.Iterator;
-import java.util.List;
-
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
-import org.nd4j.evaluation.classification.Evaluation;
-import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
 
@@ -80,20 +76,5 @@ public abstract class Trainer {
         return retVal;
     }
 
-    /**
-     * Evaluate a model against a testing set
-     *
-     * @param model			model to evaluate
-     * @param testingSet	testing set for the evaluation
-     * @param labels		list of label names
-     *
-     * @return an evaluation object containing an assessment of the model's performance
-     */
-    public static Evaluation evaluateModel(MultiLayerNetwork model, DataSet testingSet, List<String> labels) {
-        INDArray output = model.output(testingSet.getFeatures());
-        Evaluation retVal = new Evaluation(labels);
-        retVal.eval(testingSet.getLabels(), output);
-        return retVal;
-    }
 
 }

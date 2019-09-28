@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Scanner;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.cpu.nativecpu.NDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.factory.Nd4j;
@@ -240,7 +239,7 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
             this.buffer.add(record);
         }
         // Create and fill the feature and label arrays.
-        NDArray features = createFeatureArray();
+        INDArray features = createFeatureArray();
         INDArray labels = Nd4j.zeros(this.buffer.size(), this.labels.size());
         ArrayList<String> metaData = (haveMeta ? new ArrayList<String>(this.buffer.size()) : null);
         int row = 0;
@@ -272,7 +271,7 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
     protected INDArray formatFeature(Entry record) {
         // Create the output array:  one row for each channel (depth), one column for each input column, and a unit height in the middle.
         int[] indices = new int[] { this.getChannels(), 1, this.getWidth() };
-        NDArray retVal = new NDArray(indices);
+        INDArray retVal = Nd4j.createUninitialized(indices);
         // Set the indices for use below.
         indices[1] = 0;
         for (int i = 0; i < this.getWidth(); i++) {
@@ -313,10 +312,10 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
      *
      * @return an empty feature array for the output
      */
-    protected NDArray createFeatureArray() {
+    protected INDArray createFeatureArray() {
         int[] shape = new int[] { this.buffer.size(), 1, 1,
                 this.getWidth() };
-        return new NDArray(shape);
+        return Nd4j.createUninitialized(shape);
     }
 
     /**

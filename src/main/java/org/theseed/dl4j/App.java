@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
+import org.theseed.dl4j.predict.MultiRunProcessor;
 import org.theseed.dl4j.predict.PredictionProcessor;
 import org.theseed.dl4j.train.ImproveProcessor;
 import org.theseed.dl4j.train.SearchProcessor;
@@ -17,7 +18,8 @@ import org.theseed.utils.Parms;
 /**
  * Main entry point for the Deep Learning utility.  The first parameter is a command-- use "train" to
  * train a model with a training set.  Use "predict" to apply a model to a prediction set.  Use
- * "search" to test multiple model configurations.
+ * "search" to test multiple model configurations.  Use "multirun" to run predictions on multiple models
+ * in a single directory.
  *
  * If the command is followed by an equal sign, then the part after the equal sign should be a file name.
  * The parameters will be read from the file. Otherwise, the parameters are taken from the remainder of
@@ -68,6 +70,10 @@ public class App
                 runObject = new ImproveProcessor();
                 success = execute(runObject, args);
                 break;
+            case "multirun" :
+                runObject = new MultiRunProcessor();
+                success = execute(runObject, args);
+                break;
             case "--help" :
             case "-h" :
             case "help" :
@@ -86,6 +92,10 @@ public class App
                 System.err.println();
                 System.err.println("Command code \"improve\":");
                 runObject = new ImproveProcessor();
+                execute(runObject, args);
+                System.err.println();
+                System.err.println("Command code \"multirun\":");
+                runObject = new MultiRunProcessor();
                 execute(runObject, args);
                 break;
             default :

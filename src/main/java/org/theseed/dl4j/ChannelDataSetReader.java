@@ -8,8 +8,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-import org.nd4j.linalg.cpu.nativecpu.NDArray;
+import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.factory.Nd4j;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.io.TabbedLineReader.Line;
 
@@ -27,7 +29,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
 
     // FIELDS
     /** hash mapping each input value to its array of channel values */
-    private HashMap<String, double[]> channelMap;
+    private Map<String, double[]> channelMap;
     /** number of channels */
     private int channels;
 
@@ -42,7 +44,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      * @throws IOException
      */
     public ChannelDataSetReader(File file, String labelCol, List<String> labels, List<String> metaCols,
-            HashMap<String, double[]> dict)
+            Map<String, double[]> dict)
             throws IOException {
         super(file, labelCol, labels, metaCols);
         setDictionary(dict);
@@ -60,7 +62,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      * @throws IOException
      */
     public ChannelDataSetReader(InputStream stream, String labelCol, List<String> labels, List<String> metaCols,
-            HashMap<String, double[]> dict)
+            Map<String, double[]> dict)
             throws IOException {
         super(stream, labelCol, labels, metaCols);
         setDictionary(dict);
@@ -77,7 +79,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      * @throws IOException
      */
     public ChannelDataSetReader(File file, String labelCol, List<String> labels,
-            HashMap<String, double[]> dict)
+            Map<String, double[]> dict)
             throws IOException {
         super(file, labelCol, labels);
         setDictionary(dict);
@@ -94,7 +96,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      * @throws IOException
      */
     public ChannelDataSetReader(InputStream stream, String labelCol, List<String> labels,
-            HashMap<String, double[]> dict)
+            Map<String, double[]> dict)
             throws IOException {
         super(stream, labelCol, labels);
         setDictionary(dict);
@@ -110,7 +112,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      * @throws IOException
      */
     public ChannelDataSetReader(File file, List<String> metaCols,
-            HashMap<String, double[]> dict)
+            Map<String, double[]> dict)
             throws IOException {
         super(file, metaCols);
         setDictionary(dict);
@@ -126,7 +128,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      * @throws IOException
      */
     public ChannelDataSetReader(InputStream stream, List<String> metaCols,
-            HashMap<String, double[]> dict)
+            Map<String, double[]> dict)
             throws IOException {
         super(stream, metaCols);
         setDictionary(dict);
@@ -137,7 +139,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      *
      * @param dict	hash mapping input strings to channel vectors
      */
-    public void setDictionary(HashMap<String, double[]> dict) {
+    public void setDictionary(Map<String, double[]> dict) {
         this.channelMap = dict;
         // Get the number of channels.  This is not the same as the number of values, as some values
         // may distribute among channels. (For example, in genomics, an ambiguity character would not
@@ -154,10 +156,10 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      * @return an empty feature array for the output
      */
     @Override
-    protected NDArray createFeatureArray() {
+    protected INDArray createFeatureArray() {
         int[] shape = new int[] { this.buffer.size(), this.channels, 1,
                 this.getWidth() };
-        return new NDArray(shape);
+        return Nd4j.createUninitialized(shape);
     }
 
     /**
@@ -181,7 +183,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      *
      * @throws IOException
      */
-    public static HashMap<String, double[]> readChannelFile(File inFile) throws IOException {
+    public static Map<String, double[]> readChannelFile(File inFile) throws IOException {
         HashMap<String, double[]> retVal = new HashMap<String, double[]>();
         TabbedLineReader inStream = new TabbedLineReader(inFile);
         while (inStream.hasNext()) {

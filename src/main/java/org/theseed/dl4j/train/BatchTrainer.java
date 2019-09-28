@@ -59,7 +59,7 @@ public class BatchTrainer extends Trainer {
                 log.info("Score at end of batch {} is {}.", retVal.getEventCount(),
                         newScore);
             } else try {
-                retVal.checkModel(model, testingSet, this.processor, duration, newScore, this.eventsName(), process);
+                retVal.checkModel(model, testingSet, this.processor, duration, this.eventsName(), process);
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.
                 newScore = Double.NaN;

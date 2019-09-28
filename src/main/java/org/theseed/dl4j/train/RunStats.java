@@ -4,9 +4,11 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
 
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.nd4j.evaluation.classification.Evaluation;
+import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +20,7 @@ import org.slf4j.LoggerFactory;
  * @author Bruce Parrello
  */
 abstract public class RunStats {
+
 
     /** Method for determining model to save */
     public static enum OptimizationType {
@@ -64,6 +67,15 @@ abstract public class RunStats {
 
     /** displayable duration of training run */
     private String duration;
+
+    /** most recent accuracy */
+    protected double newAccuracy;
+
+    /** most recent score */
+    protected double newScore;
+
+    /** output from best model */
+    private INDArray output;
 
     /**
      * Construct a blank run tracker.
@@ -194,13 +206,11 @@ abstract public class RunStats {
     /**
      * Store the new best model.
      * @param bestModel 	the new best model
-     * @param accuracy		the new best model's accuracy
-     * @param newScore		the new best model's score
      */
-    public void setBestModel(MultiLayerNetwork bestModel, double accuracy, double newScore) {
+    public void setBestModel(MultiLayerNetwork bestModel) {
         this.bestModel = bestModel;
-        this.bestAccuracy = accuracy;
-        this.bestScore = newScore;
+        this.bestAccuracy = this.newAccuracy;
+        this.bestScore = this.newScore;
         this.bestEvent = this.eventCount;
         this.saveCount++;
         this.uselessEvents = 0;
@@ -227,12 +237,11 @@ abstract public class RunStats {
      * @param testingSet	testing set for evaluating the model
      * @param processor		training processor managing the training
      * @param seconds		number of seconds spent processing this section
-     * @param newScore		latest score
      * @param eventType		label to use for events
      * @param processType	label to use for processing
      */
     abstract public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
-            double seconds, double newScore, String eventType, String processType);
+            double seconds,String eventType, String processType);
 
     /**
      * Write a report to the trial log.
@@ -254,6 +263,37 @@ abstract public class RunStats {
         trialWriter.close();
     }
 
+    /**
+     * Evaluate a model against a testing set
+     *
+     * @param model			model to evaluate
+     * @param testingSet	testing set for the evaluation
+     * @param labels		list of label names
+     *
+     * @return an evaluation object containing an assessment of the model's performance
+     */
+    public Evaluation evaluateModel(MultiLayerNetwork model, DataSet testingSet, List<String> labels) {
+        this.output = model.output(testingSet.getFeatures());
+        Evaluation retVal = new Evaluation(labels);
+        retVal.eval(testingSet.getLabels(), this.output);
+        this.newAccuracy = retVal.accuracy();
+        this.newScore = model.score();
+        return retVal;
+    }
+
+    /**
+     * @return the name of the tracked events for the relevant trainer
+     */
+    public String getEventsName() {
+        return eventsName;
+    }
+
+    /**
+     * @return the output from the lqst evaluation
+     */
+    public INDArray getOutput() {
+        return output;
+    }
 
 
     // SUBCLASSES
@@ -274,18 +314,16 @@ abstract public class RunStats {
          * @param testingSet	testing set for evaluating the model
          * @param processor		training processor managing the training
          * @param seconds		number of seconds spent processing this section
-         * @param newScore		latest score
          * @param eventType		label to use for events
          * @param processType	label to use for processing
          */
         @Override
         public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
-                double seconds, double newScore, String eventType, String processType) {
-            Evaluation eval = Trainer.evaluateModel(model, testingSet, processor.getLabels());
-            double newAccuracy = eval.accuracy();
+                double seconds, String eventType, String processType) {
+            this.evaluateModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
-            if (newScore < this.getBestScore() || newScore == this.getBestScore() && newAccuracy > this.getBestAccuracy()) {
-                this.setBestModel(model.clone(), newAccuracy, newScore);
+            if (this.newScore < this.getBestScore() || newScore == this.getBestScore() && this.newAccuracy > this.getBestAccuracy()) {
+                this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
             } else {
                 saveFlag = String.format("  Best score was %g in %d with accuracy %g.", this.getBestScore(), this.getBestEvent(),
@@ -293,7 +331,7 @@ abstract public class RunStats {
                 this.uselessIteration();
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",
-                    this.getEventCount(), eventType, newScore, seconds, processType, newAccuracy, saveFlag);
+                    this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
         }
     }
 
@@ -313,18 +351,16 @@ abstract public class RunStats {
          * @param testingSet	testing set for evaluating the model
          * @param processor		training processor managing the training
          * @param seconds		number of seconds spent processing this section
-         * @param newScore		latest score
          * @param eventType		label to use for events
          * @param processType	label to use for processing
          */
         @Override
         public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
-                double seconds, double newScore, String eventType, String processType) {
-            Evaluation eval = Trainer.evaluateModel(model, testingSet, processor.getLabels());
-            double newAccuracy = eval.accuracy();
+                double seconds, String eventType, String processType) {
+            this.evaluateModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
-            if (newAccuracy > this.getBestAccuracy() || newAccuracy == this.getBestAccuracy() && newScore < this.getBestScore()) {
-                this.setBestModel(model.clone(), newAccuracy, newScore);
+            if (this.newAccuracy > this.getBestAccuracy() || this.newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
+                this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
             } else {
                 saveFlag = String.format("  Best accuracy was %g in %d with score %g.", this.getBestAccuracy(),
@@ -332,16 +368,9 @@ abstract public class RunStats {
                 this.uselessIteration();
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",
-                    this.getEventCount(), eventType, newScore, seconds, processType, newAccuracy, saveFlag);
+                    this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
         }
 
-    }
-
-    /**
-     * @return the name of the tracked events for the relevant trainer
-     */
-    public String getEventsName() {
-        return eventsName;
     }
 
 }

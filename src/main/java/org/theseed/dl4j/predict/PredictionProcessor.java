@@ -7,8 +7,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.lang3.StringUtils;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
@@ -47,8 +47,6 @@ import org.theseed.utils.ICommand;
  *
  * The command-line options are as follows.
  *
- * -b	size of each input batch; the default is 500; a larger batch size improves throughput, but a smaller
- * 		one reduces the memory footprint
  * -i	the name of the input file of predictions; the default is the standard input
  * -o	heading to put on the result column; the default is "predicted"
  *
@@ -80,11 +78,6 @@ public class PredictionProcessor implements ICommand {
     @Option(name="-h", aliases={"--help"}, help=true)
     private boolean help;
 
-    /** size of each input batch */
-    @Option(name="-b", aliases={"--batchSize"}, metaVar="1000",
-            usage="size of each input batch")
-    private int batchSize;
-
     /** input prediction set */
     @Option(name="-i", aliases={"--input"}, metaVar="requests.tbl",
             usage="input prediction set file")
@@ -113,7 +106,6 @@ public class PredictionProcessor implements ICommand {
         boolean retVal = false;
         // Set the defaults.
         this.help = false;
-        this.batchSize = 500;
         this.inputFile = null;
         this.metaCols = "";
         this.outColumn = "predicted";
@@ -152,7 +144,7 @@ public class PredictionProcessor implements ICommand {
                         } else {
                             log.info("Channel input.");
                             // Here we have channel input.
-                            HashMap<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+                            Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
                             this.reader = new ChannelDataSetReader(this.inputFile, metaList, channelMap);
                         }
                         this.reader.setNormalizer(normalizer);

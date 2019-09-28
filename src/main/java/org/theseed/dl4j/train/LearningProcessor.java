@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -115,6 +114,21 @@ public class LearningProcessor {
     }
 
     /**
+     * Format a ratio for display in the evaluation metrics matrix.
+     *
+     * @param value		numerator
+     * @param total		denominator
+     *
+     * @return a formatted fraction, or an empty string if the denominator is 0
+     */
+    protected static String formatRatio(double value, int total) {
+        String retVal = "";
+        if (total > 0) {
+            retVal = String.format("%11.4f", value / total);
+        }
+        return retVal;
+    }
+    /**
      * Set the defaults and perform initialization for the parameters.
      */
     protected void setDefaults() {
@@ -168,17 +182,22 @@ public class LearningProcessor {
      *
      * @param bestModel		model chosen for the report
      * @param buffer		text string buffer for report output
+     * @param runStats		object describing run
      */
-    public void accuracyReport(MultiLayerNetwork bestModel, TextStringBuilder buffer) {
+    public void accuracyReport(MultiLayerNetwork bestModel, TextStringBuilder buffer, RunStats runStats) {
         // Now we evaluate the model on the test set: compare the output to the actual
         // values.
-        Evaluation eval = Trainer.evaluateModel(bestModel, this.getTestingSet(), this.getLabels());
+        Evaluation eval = runStats.evaluateModel(bestModel, this.getTestingSet(), this.getLabels());
         // Output the evaluation.
         buffer.appendln(eval.stats());
         ConfusionMatrix<Integer> matrix = eval.getConfusion();
         // This last thing is the table of scores for each prediction.  This only makes sense if we have
         // an "other" mode.
         if (this.otherMode) {
+            // We need the output and the testing set labels for comparison.
+            INDArray output = runStats.getOutput();
+            INDArray expect = this.getTestingSet().getLabels();
+            // Analyze the negative results.
             int actualNegative = matrix.getActualTotal(0);
             if (actualNegative == 0) {
                 buffer.appendln("No \"%s\" results were found.", this.getLabels().get(0));
@@ -186,18 +205,26 @@ public class LearningProcessor {
                 double specificity = ((double) matrix.getCount(0, 0)) / actualNegative;
                 buffer.appendln("Model specificity is %11.4f.%n", specificity);
             }
-            buffer.appendln("%-11s %11s %11s %11s %11s", "class", "accuracy", "sensitivity", "precision", "fallout");
-            buffer.appendln(StringUtils.repeat('-', 59));
+            // Write the header.
+            buffer.appendln("%-11s %11s %11s %11s %11s %11s", "class", "accuracy", "sensitivity", "precision", "fallout", "L1 error");
+            buffer.appendln(StringUtils.repeat('-', 71));
             // The classification accuracy is 1 - (false negative + false positive) / total,
             // sensitivity is true positive / actual positive, precision is true positive / predicted positive,
-            // and fall-out is false positive / actual negative.
+            // and fall-out is false positive / actual negative.  The L2 Error is the trickiest.  It is the absolute
+            // difference between the expected values and the output, divided by the number of examples.
             for (int i = 1; i < this.getLabels().size(); i++) {
                 String label = this.getLabels().get(i);
                 double accuracy = 1 - ((double) (matrix.getCount(0, i) + matrix.getCount(i,  0))) / this.testSize;
+                double l1_error = 0.0;
+                for (long r = 0; r < this.testSize; r++) {
+                    double diff = expect.getDouble(r, i) - output.getDouble(r, i);
+                    l1_error += Math.abs(diff);
+                }
                 String sensitivity = formatRatio(matrix.getCount(i, i), matrix.getActualTotal(i));
                 String precision = formatRatio(matrix.getCount(i, i), matrix.getPredictedTotal(i));
                 String fallout = formatRatio(matrix.getCount(0,  i), actualNegative);
-                buffer.appendln("%-11s %11.4f %11s %11s %11s", label, accuracy, sensitivity, precision, fallout);
+                String l1Error = formatRatio(l1_error, this.testSize);
+                buffer.appendln("%-11s %11.4f %11s %11s %11s %11s", label, accuracy, sensitivity, precision, fallout, l1Error);
             }
         }
         // Finally, save the accuracy in case SearchProcessor is running us.
@@ -348,7 +375,7 @@ public class LearningProcessor {
             this.reader = new TabbedDataSetReader(this.trainingFile, this.labelCol, this.getLabels(), metaList);
         } else {
             // Here we have channel input.
-            HashMap<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+            Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
             ChannelDataSetReader myReader = new ChannelDataSetReader(this.trainingFile, this.labelCol,
                     this.getLabels(), metaList, channelMap);
             this.channelCount = myReader.getChannels();

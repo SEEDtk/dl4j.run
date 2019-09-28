@@ -88,7 +88,7 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 parms.appendln("%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
                 this.clearAccuracy();
             } else {
-                this.accuracyReport(bestModel, parms);
+                this.accuracyReport(bestModel, parms, runStats);
             }
             // Add the summary.
             parms.appendln(bestModel.summary());

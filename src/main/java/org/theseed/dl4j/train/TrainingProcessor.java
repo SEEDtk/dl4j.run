@@ -647,7 +647,7 @@ public class TrainingProcessor extends LearningProcessor implements ICommand {
                             "     Output layer loss function is %s.%n" +
                             "     Loss function label weights are %s.%n" +
                             "     %s minutes to run %d %s (best was %d), with %d score bounces.%n" +
-                            "     %d models saved.",
+                            "     Final score is %g.  %d models saved.",
                            this.iterations, this.batchSize, this.testSize, this.seed,
                            this.subFactor, this.method.toString(), this.regulizer,
                            this.gradNorm.toString(), this.biasUpdateMethod.toString(), this.biasRate,
@@ -656,7 +656,7 @@ public class TrainingProcessor extends LearningProcessor implements ICommand {
                            outActivation.toString(), this.lossFunction.toString(),
                            this.lossWeights.toString(), runStats.getDuration(), runStats.getEventCount(),
                            runStats.getEventsName(), runStats.getBestEvent(), runStats.getBounceCount(),
-                           runStats.getSaveCount());
+                           runStats.getBestScore(), runStats.getSaveCount());
             if (! this.convolutions.isEmpty()) {
                 parms.appendln("     Convolution layers used with kernel sizes %s", this.convolutions);
                 parms.appendln("     Convolutions used filter sizes %s and strides %s.",
@@ -677,7 +677,7 @@ public class TrainingProcessor extends LearningProcessor implements ICommand {
                 parms.appendln("MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
                 this.clearAccuracy();
             } else {
-                this.accuracyReport(bestModel, parms);
+                this.accuracyReport(bestModel, parms, runStats);
             }
             // Add the summary.
             parms.appendln(bestModel.summary(inputShape));

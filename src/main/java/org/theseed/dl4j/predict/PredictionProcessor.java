@@ -50,9 +50,11 @@ import org.theseed.utils.ICommand;
  * -i	the name of the input file of predictions; the default is the standard input
  * -o	heading to put on the result column; the default is "predicted"
  *
- * --meta	a comma-delimited list of the metadata columns; these columns are ignored during training; the
- * 			default is none
- * --name	the model file name (the default is "model.ser" in the model directory)
+ * --meta			a comma-delimited list of the metadata columns; these columns are ignored during training; the
+ * 					default is none
+ * --name			the model file name (the default is "model.ser" in the model directory)
+ * --regression		if specified, all confidences are output rather than the label with the highest confidence;
+ * 					this is recommended for regression models
 
  * @author Bruce Parrello
  *
@@ -94,6 +96,10 @@ public class PredictionProcessor implements ICommand {
     /** model file name */
     @Option(name="--name", usage="model file name (default is model.ser in model directory)")
     private File modelName;
+
+    /** output all confidences */
+    @Option(name="--regression", aliases={"-r"}, usage="output in regression mode rather than classification mode")
+    private boolean confOutput;
 
    /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
@@ -150,7 +156,13 @@ public class PredictionProcessor implements ICommand {
                         this.reader.setNormalizer(normalizer);
                         // Write the output headers.
                         String metaHeader = StringUtils.join(this.metaList, '\t');
-                        System.out.format("%s\t%s\tconfidence%n", metaHeader, this.outColumn);
+                        String confColumns;
+                        if (this.confOutput) {
+                            confColumns = StringUtils.join(this.labels, '\t');
+                        } else {
+                            confColumns = this.outColumn + "\tconfidence";
+                        }
+                        System.out.format("%s\t%s%n", metaHeader, confColumns);
                         // Denote we're ready.
                         retVal = true;
                     }
@@ -176,18 +188,30 @@ public class PredictionProcessor implements ICommand {
             // Loop through the output and the metadata in parallel.
             int i = 0;
             for (String metaDatum : metaData) {
-                // Find the best output for this row.
-                int jBest = 0;
-                double vBest = output.getDouble(i, 0);
-                for (int j = 1; j < this.labels.size(); j++) {
-                    double v = output.getDouble(i, j);
-                    if (v > vBest) {
-                        vBest = v;
-                        jBest = j;
+                // We have the metadata for this row.  Find the output.
+                if (this.confOutput) {
+                    // Here we need to output the confidences column by column.
+                    // Start with the metadata.
+                    System.out.print(metaDatum);
+                    // Loop through the labels.
+                    for (int j = 0; j < this.labels.size(); j++)
+                        System.out.format("\t%12.8g", output.getDouble(i, j));
+                    // Terminate the line.
+                    System.out.println();
+                } else {
+                    // Here we need to find the best label and its confidence.
+                    int jBest = 0;
+                    double vBest = output.getDouble(i, 0);
+                    for (int j = 1; j < this.labels.size(); j++) {
+                        double v = output.getDouble(i, j);
+                        if (v > vBest) {
+                            vBest = v;
+                            jBest = j;
+                        }
                     }
+                    String prediction = this.labels.get(jBest);
+                    System.out.format("%s\t%s\t%12.8g%n", metaDatum, prediction, vBest);
                 }
-                String prediction = this.labels.get(jBest);
-                System.out.format("%s\t%s\t%12.8g%n", metaDatum, prediction, vBest);
                 // Advance the row index.
                 i++;
             }

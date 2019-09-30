@@ -34,17 +34,15 @@ public class BatchTrainer extends Trainer {
      * @param model			the model to train
      * @param reader		reader for traversing the training data
      * @param testingSet	testing set for evaluation
-     *
-     * @return a RunStats object describing our progress and success
+     * @param runStats		a RunStats object describing our progress and success
      */
     @Override
-    public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet) {
-        RunStats retVal = RunStats.create(model, this.processor.getPreference(), this);
+    public void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet, RunStats runStats) {
         double oldScore = Double.MAX_VALUE;
         String process = processor.getIterations() + " iterations";
-        while (reader.hasNext() && retVal.getEventCount() < processor.getMaxBatches() && ! retVal.isErrorStop()) {
+        while (reader.hasNext() && runStats.getEventCount() < processor.getMaxBatches() && ! runStats.isErrorStop()) {
             // Record this batch.
-            retVal.event();
+            runStats.event();
             // Read it in and train with it.
             long startTime = System.currentTimeMillis();
             DataSet trainingData = reader.next();
@@ -55,11 +53,11 @@ public class BatchTrainer extends Trainer {
             // Check for a score bounce.
             double newScore = model.score();
             if (oldScore < newScore) {
-                retVal.bounce();
-                log.info("Score at end of batch {} is {}.", retVal.getEventCount(),
+                runStats.bounce();
+                log.info("Score at end of batch {} is {}.", runStats.getEventCount(),
                         newScore);
             } else try {
-                retVal.checkModel(model, testingSet, this.processor, duration, this.eventsName(), process);
+                runStats.checkModel(model, testingSet, this.processor, duration, this.eventsName(), process);
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.
                 newScore = Double.NaN;
@@ -69,10 +67,9 @@ public class BatchTrainer extends Trainer {
             // Force a stop if we have overflow or underflow.
             if (! Double.isFinite(newScore)) {
                 log.error("Overflow/Underflow in gradient processing.  Model abandoned.");
-                retVal.error();
+                runStats.error();
             }
         }
-        return retVal;
     }
 
     @Override

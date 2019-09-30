@@ -41,17 +41,20 @@ public class LearningProcessor {
     /** TRUE if we have channel input */
     private boolean channelMode;
     /** best accuracy */
-    private double bestAccuracy;
+    private double bestRating;
+    /** normalization object */
+    private DataNormalization normalizer;
+    /** training results */
+    private RunStats results;
+
+
     /** logging facility */
-    protected static Logger log = LoggerFactory.getLogger(TrainingProcessor.class);
+    protected static Logger log = LoggerFactory.getLogger(ClassTrainingProcessor.class);
 
     // COMMAND LINE PARAMETER
     /** help option */
     @Option(name = "-h", aliases = { "--help" }, help = true)
     protected boolean help;
-    /** name or index of the label column */
-    @Option(name = "-c", aliases = { "--col" }, metaVar = "0", usage = "input column containing class")
-    protected String labelCol;
     /** number of iterations to run for each input batch */
     @Option(name = "-n", aliases = { "--iter" }, metaVar = "1000", usage = "number of iterations per batch")
     protected int iterations;
@@ -83,12 +86,6 @@ public class LearningProcessor {
     /** model file name */
     @Option(name = "--name", usage = "model file name (default is model.ser in model directory)")
     protected File modelName;
-    /** indicates category 0 is negative */
-    @Option(name = "--other", usage = "show metrics assuming category 0 is a negative result")
-    protected boolean otherMode;
-    /** optimization preference */
-    @Option(name = "--prefer", metaVar = "SCORE", usage = "model aspect to optimize during search")
-    protected RunStats.OptimizationType preference;
     /** input training set */
     @Option(name="-i", aliases={"--input"}, metaVar="training.tbl",
             usage="input training set file")
@@ -133,7 +130,6 @@ public class LearningProcessor {
      */
     protected void setDefaults() {
         this.help = false;
-        this.labelCol = "1";
         this.iterations = 1000;
         this.batchSize = 500;
         this.testSize = 2000;
@@ -146,35 +142,40 @@ public class LearningProcessor {
         this.earlyStop = 200;
         this.modelName = null;
         this.comment = null;
-        this.otherMode = false;
-        this.preference = RunStats.OptimizationType.ACCURACY;
-        // Clear the accuracy value.
-        this.bestAccuracy = 0.0;
+        // Clear the rating value and the normalizer.
+        this.bestRating = 0.0;
+        this.normalizer = null;
     }
 
     /**
      * Train and save the current model.
      *
-     * @param normalizer	normalizer to use for the data
      * @param model			model to train
-     *
-     * @return a RunStats describing the training results
+     * @param runStats		RunStats object for choosing the best model
+     * @param trainer		trainer for training the model
      *
      * @throws IOException
      */
-    public RunStats trainModel(DataNormalization normalizer, MultiLayerNetwork model) throws IOException {
+    public void trainModel(MultiLayerNetwork model, RunStats runStats, Trainer trainer) throws IOException {
         this.reader.setBatchSize(this.batchSize);
         long start = System.currentTimeMillis();
-        Trainer myTrainer = Trainer.create(this.method, this, log);
         log.info("Starting trainer.");
-        RunStats runStats = myTrainer.trainModel(model, this.reader, getTestingSet());
+        trainer.trainModel(model, this.reader, getTestingSet(), runStats);
         runStats.setDuration(DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss"));
+        this.results = runStats;
+    }
+
+    /**
+     * If a model was created, save it to the model directory.
+     *
+     * @throws IOException
+     */
+    protected void saveModel() throws IOException {
         // Here we save the model.
-        if (runStats.getSaveCount() > 0) {
+        if (results.getSaveCount() > 0) {
             log.info("Saving model to {}.", this.modelName);
-            ModelSerializer.writeModel(runStats.getBestModel(), this.modelName, true, normalizer);
+            ModelSerializer.writeModel(results.getBestModel(), this.modelName, true, normalizer);
         }
-        return runStats;
     }
 
     /**
@@ -191,44 +192,40 @@ public class LearningProcessor {
         // Output the evaluation.
         buffer.appendln(eval.stats());
         ConfusionMatrix<Integer> matrix = eval.getConfusion();
-        // This last thing is the table of scores for each prediction.  This only makes sense if we have
-        // an "other" mode.
-        if (this.otherMode) {
-            // We need the output and the testing set labels for comparison.
-            INDArray output = runStats.getOutput();
-            INDArray expect = this.getTestingSet().getLabels();
-            // Analyze the negative results.
-            int actualNegative = matrix.getActualTotal(0);
-            if (actualNegative == 0) {
-                buffer.appendln("No \"%s\" results were found.", this.getLabels().get(0));
-            } else {
-                double specificity = ((double) matrix.getCount(0, 0)) / actualNegative;
-                buffer.appendln("Model specificity is %11.4f.%n", specificity);
+        // We need the output and the testing set labels for comparison.
+        INDArray output = runStats.getOutput();
+        INDArray expect = this.getTestingSet().getLabels();
+        // Analyze the negative results.
+        int actualNegative = matrix.getActualTotal(0);
+        if (actualNegative == 0) {
+            buffer.appendln("No \"%s\" results were found.", this.getLabels().get(0));
+        } else {
+            double specificity = ((double) matrix.getCount(0, 0)) / actualNegative;
+            buffer.appendln("Model specificity is %11.4f.%n", specificity);
+        }
+        // Write the header.
+        buffer.appendln("%-11s %11s %11s %11s %11s %11s", "class", "accuracy", "sensitivity", "precision", "fallout", "MAE");
+        buffer.appendln(StringUtils.repeat('-', 71));
+        // The classification accuracy is 1 - (false negative + false positive) / total,
+        // sensitivity is true positive / actual positive, precision is true positive / predicted positive,
+        // and fall-out is false positive / actual negative.  The L2 Error is the trickiest.  It is the absolute
+        // difference between the expected values and the output, divided by the number of examples.
+        for (int i = 1; i < this.getLabels().size(); i++) {
+            String label = this.getLabels().get(i);
+            double accuracy = 1 - ((double) (matrix.getCount(0, i) + matrix.getCount(i,  0))) / this.testSize;
+            double l1_error = 0.0;
+            for (long r = 0; r < this.testSize; r++) {
+                double diff = expect.getDouble(r, i) - output.getDouble(r, i);
+                l1_error += Math.abs(diff);
             }
-            // Write the header.
-            buffer.appendln("%-11s %11s %11s %11s %11s %11s", "class", "accuracy", "sensitivity", "precision", "fallout", "L1 error");
-            buffer.appendln(StringUtils.repeat('-', 71));
-            // The classification accuracy is 1 - (false negative + false positive) / total,
-            // sensitivity is true positive / actual positive, precision is true positive / predicted positive,
-            // and fall-out is false positive / actual negative.  The L2 Error is the trickiest.  It is the absolute
-            // difference between the expected values and the output, divided by the number of examples.
-            for (int i = 1; i < this.getLabels().size(); i++) {
-                String label = this.getLabels().get(i);
-                double accuracy = 1 - ((double) (matrix.getCount(0, i) + matrix.getCount(i,  0))) / this.testSize;
-                double l1_error = 0.0;
-                for (long r = 0; r < this.testSize; r++) {
-                    double diff = expect.getDouble(r, i) - output.getDouble(r, i);
-                    l1_error += Math.abs(diff);
-                }
-                String sensitivity = formatRatio(matrix.getCount(i, i), matrix.getActualTotal(i));
-                String precision = formatRatio(matrix.getCount(i, i), matrix.getPredictedTotal(i));
-                String fallout = formatRatio(matrix.getCount(0,  i), actualNegative);
-                String l1Error = formatRatio(l1_error, this.testSize);
-                buffer.appendln("%-11s %11.4f %11s %11s %11s %11s", label, accuracy, sensitivity, precision, fallout, l1Error);
-            }
+            String sensitivity = formatRatio(matrix.getCount(i, i), matrix.getActualTotal(i));
+            String precision = formatRatio(matrix.getCount(i, i), matrix.getPredictedTotal(i));
+            String fallout = formatRatio(matrix.getCount(0,  i), actualNegative);
+            String l1Error = formatRatio(l1_error, this.testSize);
+            buffer.appendln("%-11s %11.4f %11s %11s %11s %11s", label, accuracy, sensitivity, precision, fallout, l1Error);
         }
         // Finally, save the accuracy in case SearchProcessor is running us.
-        this.bestAccuracy = eval.accuracy();
+        this.bestRating = runStats.getBestRating();
     }
 
     /**
@@ -285,24 +282,24 @@ public class LearningProcessor {
     }
 
     /**
-     * @return the optimization preference
+     * @return the rating of the best epoch
      */
-    public RunStats.OptimizationType getPreference() {
-        return preference;
+    public double getRating() {
+        return bestRating;
     }
 
     /**
-     * @return the accuracy of the best epoch
+     * Store a new best rating.
      */
-    public double getAccuracy() {
-        return bestAccuracy;
+    public void setRating(double newValue) {
+        this.bestRating = newValue;
     }
 
     /**
-     * Reset the accuracy indicator to show failure to achieve a result.
+     * Reset the rating indicator to show failure to achieve a result.
      */
-    public void clearAccuracy() {
-        this.bestAccuracy = 0;
+    public void clearRating() {
+        this.bestRating = Double.NEGATIVE_INFINITY;
     }
 
     /**
@@ -362,26 +359,36 @@ public class LearningProcessor {
     }
 
     /**
-     * @param metaList
+     * Initialize the reader for reading a training set.
+     *
+     * @oaram labelCol	column specifier for the label column, or NULL if there is none
+     * @param metaList	list of metadata columns
+     *
      * @throws IOException
      */
-    public void initializeReader(List<String> metaList) throws IOException {
+    public void initializeReader(String labelCol, List<String> metaList) throws IOException {
         // Determine the input type and get the appropriate reader.
         File channelFile = new File(this.modelDir, "channels.tbl");
         this.channelMode = channelFile.exists();
         if (! this.channelMode) {
             log.info("Normal input.");
             // Normal situation.  Read scalar values.
-            this.reader = new TabbedDataSetReader(this.trainingFile, this.labelCol, this.getLabels(), metaList);
+            this.reader = new TabbedDataSetReader(this.trainingFile, labelCol, this.getLabels(), metaList);
         } else {
             // Here we have channel input.
             Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
-            ChannelDataSetReader myReader = new ChannelDataSetReader(this.trainingFile, this.labelCol,
+            ChannelDataSetReader myReader = new ChannelDataSetReader(this.trainingFile, labelCol,
                     this.getLabels(), metaList, channelMap);
             this.channelCount = myReader.getChannels();
             this.reader = myReader;
             log.info("Channel input with {} channels.", this.getChannelCount());
         }
+    }
+
+    /**
+     * Read in the testing set.
+     */
+    protected void readTestingSet() {
         // Get the testing set.
         log.info("Reading testing set (size = {}).", this.testSize);
         this.reader.setBatchSize(this.testSize);
@@ -396,25 +403,31 @@ public class LearningProcessor {
     /**
      * Set up the training file for processing.
      *
+     * @oaram labelCol	column specifier for the label column, or NULL if there is none
+     *
      * @throws FileNotFoundException
      * @throws IOException
      */
-    public void setupTraining() throws FileNotFoundException, IOException {
-        // Read in the labels from the label file.
-        File labelFile = new File(this.modelDir, "labels.txt");
-        if (! labelFile.exists())
-            throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
-        this.setLabels(TabbedDataSetReader.readLabels(labelFile));
-        log.info("{} labels read from label file.", this.getLabels().size());
-        // Parse the metadata column list.
-        List<String> metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
-        // Finally, we initialize the input to get the label and metadata columns handled.
-        if (this.trainingFile == null) {
-            this.trainingFile = new File(this.modelDir, "training.tbl");
-            if (! this.trainingFile.exists())
-                throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
+    public void setupTraining(String labelCol) throws FileNotFoundException, IOException {
+        if (! this.modelDir.isDirectory()) {
+            throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
+        } else {
+            // Read in the labels from the label file.
+            File labelFile = new File(this.modelDir, "labels.txt");
+            if (! labelFile.exists())
+                throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
+            this.setLabels(TabbedDataSetReader.readLabels(labelFile));
+            log.info("{} labels read from label file.", this.getLabels().size());
+            // Parse the metadata column list.
+            List<String> metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
+            // Finally, we initialize the input to get the label and metadata columns handled.
+            if (this.trainingFile == null) {
+                this.trainingFile = new File(this.modelDir, "training.tbl");
+                if (! this.trainingFile.exists())
+                    throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
+            }
+            initializeReader(labelCol, metaList);
         }
-        initializeReader(metaList);
     }
 
     /**
@@ -429,6 +442,23 @@ public class LearningProcessor {
      */
     public int getChannelCount() {
         return channelCount;
+    }
+
+    /**
+     * @return the input normalizer
+     */
+    protected DataNormalization getNormalizer() {
+        return normalizer;
+    }
+
+    /**
+     * Store a new normalizer.
+     *
+     * @param normalizer the normalizer to set
+     */
+    protected void setNormalizer(DataNormalization normalizer) {
+        this.normalizer = normalizer;
+        this.reader.setNormalizer(normalizer);
     }
 
 }

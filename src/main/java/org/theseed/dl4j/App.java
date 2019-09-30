@@ -10,16 +10,17 @@ import org.apache.commons.lang3.StringUtils;
 import org.theseed.dl4j.predict.MultiRunProcessor;
 import org.theseed.dl4j.predict.PredictionProcessor;
 import org.theseed.dl4j.train.ImproveProcessor;
+import org.theseed.dl4j.train.RegressionTrainingProcessor;
 import org.theseed.dl4j.train.SearchProcessor;
-import org.theseed.dl4j.train.TrainingProcessor;
+import org.theseed.dl4j.train.ClassTrainingProcessor;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
 
 /**
  * Main entry point for the Deep Learning utility.  The first parameter is a command-- use "train" to
- * train a model with a training set.  Use "predict" to apply a model to a prediction set.  Use
- * "search" to test multiple model configurations.  Use "multirun" to run predictions on multiple models
- * in a single directory.
+ * train a classification model with a training set and "rtrain" to train a regression model.
+ * Use "predict" to apply a model to a prediction set.  Use "search" to test multiple model configurations.
+ * Use "multirun" to run predictions on multiple models in a single directory.
  *
  * If the command is followed by an equal sign, then the part after the equal sign should be a file name.
  * The parameters will be read from the file. Otherwise, the parameters are taken from the remainder of
@@ -55,7 +56,11 @@ public class App
             boolean success = true;
             switch (command[0]) {
             case "train" :
-                runObject = new TrainingProcessor();
+                runObject = new ClassTrainingProcessor();
+                success = execute(runObject, args);
+                break;
+            case "rtrain" :
+                runObject = new RegressionTrainingProcessor();
                 success = execute(runObject, args);
                 break;
             case "predict" :
@@ -79,7 +84,11 @@ public class App
             case "help" :
                 args = new String[] { "--help" };
                 System.err.println("Command code \"train\":");
-                runObject = new TrainingProcessor();
+                runObject = new ClassTrainingProcessor();
+                execute(runObject, args);
+                System.err.println();
+                System.err.println("Command code \"rtrain\":");
+                runObject = new RegressionTrainingProcessor();
                 execute(runObject, args);
                 System.err.println();
                 System.err.println("Command code \"predict\":");

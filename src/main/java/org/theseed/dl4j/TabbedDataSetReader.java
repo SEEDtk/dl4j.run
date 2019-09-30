@@ -39,6 +39,8 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
     TabbedLineReader reader;
     /** list of valid labels */
     ArrayList<String> labels;
+    /** map of label columns for regression labels; array index is column index, value is label column */
+    int[] labelMap;
     /** column index of label column */
     int labelIdx;
     /** normalizer to be applied to all batches of input */
@@ -61,14 +63,15 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
     protected class Entry {
         String[] feature;
         String[] metaData;
-        int label;
+        INDArray labelVals;
 
         /** Create a blank entry. */
         public Entry() {
             this.feature = new String[getWidth()];
-            this.label = 0;
+            this.labelVals = Nd4j.zeros(TabbedDataSetReader.this.labels.size());
             this.metaData = new String[getMetaWidth()];
         }
+
     }
 
     /**
@@ -174,6 +177,9 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
         // Denote everything is an input.
         this.width = this.reader.size();
         this.metaWidth = 0;
+        // Create the label map array.
+        this.labelMap = new int[this.width];
+        Arrays.fill(this.labelMap, ANULL);
         // Account for the label.
         if (this.labelIdx != ANULL) this.width--;
         // Set up the metadata columns.  Each one subtracts from the input width.
@@ -188,6 +194,21 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
         }
         // Initialize the batch size.
         this.setBatchSize(100);
+    }
+
+    /**
+     * Set up this input stream for regression input.  Columns having the same name as the labels will be identified
+     * and used as output value columns.
+     *
+     * @throws IOException
+     */
+    public void setRegressionColumns() throws IOException {
+        for (int i = 0; i < this.labels.size(); i++) {
+            String labelCol = this.labels.get(i);
+            int colIdx = this.reader.findField(labelCol);
+            this.labelMap[colIdx] = i;
+            this.width--;
+        }
     }
 
     @Override
@@ -212,7 +233,7 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
         int n = this.reader.size();
         // Remember if we have metadata and/or labels.
         boolean haveMeta = (this.getMetaWidth() > 0);
-        boolean haveLabels = (this.labelIdx != ANULL);
+        boolean haveLabels = false;
         // The array list should be empty.  Fill it from the input.
         for (int numRead = 0; numRead < this.batchSize && this.hasNext(); numRead++) {
             TabbedLineReader.Line line = this.reader.next();
@@ -220,14 +241,19 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
             int pos = 0;
             for (int i = 0; i < n; i++) {
                 if (i == this.labelIdx) {
-                    // We have a label.  Translate from a string to a number.
+                    // We have a class label.  Translate from a string to a number.
                     String labelName = line.get(i);
                     int label = this.labels.indexOf(labelName);
                     if (label < 0) {
                         throw new IllegalArgumentException("Invalid label " + labelName);
                     } else {
-                        record.label = label;
+                        record.labelVals.putScalar(label, 1.0);
                     }
+                    haveLabels = true;
+                } else if (this.labelMap[i] >= 0) {
+                    double value = line.getDouble(i);
+                    record.labelVals.putScalar(this.labelMap[i], value);
+                    haveLabels = true;
                 } else if (this.metaColFlag[i] != ANULL) {
                     // Here we have a metadata column.
                     record.metaData[this.metaColFlag[i]] = line.get(i);
@@ -245,7 +271,9 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
         int row = 0;
         for (Entry record : this.buffer) {
             features.putRow(row, formatFeature(record));
-            if (haveLabels) labels.put(row, record.label, 1.0);
+            if (haveLabels) {
+                labels.putRow(row, record.labelVals);
+            }
             if (haveMeta) metaData.add(String.join("\t", record.metaData));
             row++;
         }

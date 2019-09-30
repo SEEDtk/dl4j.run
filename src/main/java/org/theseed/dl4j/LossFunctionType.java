@@ -31,7 +31,7 @@ import org.nd4j.linalg.lossfunctions.impl.LossSquaredHinge;
  */
 public enum LossFunctionType {
 
-    XENT(true, "Binary Cross-Entropy"), COSINE_PROXIMITY(false, "Cosine Proximity"),
+    XENT(false, "Binary Cross-Entropy"), COSINE_PROXIMITY(false, "Cosine Proximity"),
     FMEASURE(true, "F-Measure"), HINGE(false, "Hinge"), KLD(false, "Kullback-Leibler Divergence"),
     L1(false, "Absolute Error"), L2(false, "Squared Error"), MAE(false, "Mean Absolute Error"),
     MAPE(false, "Mean Absolute Percentage Error"), MCXENT(false, "Multi-Class Cross-Entropy"),
@@ -92,10 +92,15 @@ public enum LossFunctionType {
      * @param weights	an array of weights, one per label
      */
     public ILossFunction create(double[] weights) {
-        float[] weightCopy = new float[weights.length];
-        for (int i = 0; i < weights.length; i++)
-            weightCopy[i] = (float) weights[i];
-        INDArray weightArray = Nd4j.create(weightCopy);
+        // Due to a bug in ND4J, if there is only one weight, we can't pass in
+        // a weight array.
+        INDArray weightArray = null;
+        if (weights.length > 1) {
+            float[] weightCopy = new float[weights.length];
+            for (int i = 0; i < weights.length; i++)
+                weightCopy[i] = (float) weights[i];
+            weightArray = Nd4j.create(weightCopy);
+        }
         ILossFunction retVal = null;
         switch (this) {
         case XENT:

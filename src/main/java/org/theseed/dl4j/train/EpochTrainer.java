@@ -32,8 +32,7 @@ public class EpochTrainer extends Trainer {
     }
 
     @Override
-    public RunStats trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet) {
-        RunStats retVal = RunStats.create(model, this.processor.getPreference(), this);
+    public void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet, RunStats runStats) {
         // Get all of the batches into a list, up to the maximum.
         log.info("Reading training data into memory.");
         List<DataSet> batches = new ArrayList<DataSet>();
@@ -44,9 +43,9 @@ public class EpochTrainer extends Trainer {
         // Initialize the old score for bounce detection.
         double oldScore = Double.MAX_VALUE;
         // Do one epoch per iteration.
-        while (retVal.getEventCount() < processor.getIterations() && ! retVal.isErrorStop() &&
-                retVal.getUselessIterations() < processor.getEarlyStop()) {
-            retVal.event();
+        while (runStats.getEventCount() < processor.getIterations() && ! runStats.isErrorStop() &&
+                runStats.getUselessIterations() < processor.getEarlyStop()) {
+            runStats.event();
             long start = System.currentTimeMillis();
             for (DataSet batch : batches) {
                 model.fit(batch);
@@ -54,27 +53,26 @@ public class EpochTrainer extends Trainer {
             double seconds = (double) (System.currentTimeMillis() - start) / 1000;
             double newScore = model.score();
              if (newScore > oldScore) {
-                retVal.bounce();
-                log.info("Score after {} epochs is {}.  {} seconds to process {}.", retVal.getEventCount(),
+                runStats.bounce();
+                log.info("Score after {} epochs is {}.  {} seconds to process {}.", runStats.getEventCount(),
                         newScore, seconds, process);
-                retVal.uselessIteration();
+                runStats.uselessIteration();
             } else try {
-                retVal.checkModel(model, testingSet, this.processor, seconds, this.eventsName(), process);
+                runStats.checkModel(model, testingSet, this.processor, seconds, this.eventsName(), process);
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.  Fake a score bounce.
                 log.warn("IllegalStateException: {}", e.getMessage());
-                retVal.error();
+                runStats.error();
             }
             oldScore = newScore;
             // Force a stop if we have overflow or underflow.
             if (! Double.isFinite(newScore)) {
                 log.error("Overflow/Underflow in gradient processing.  Model abandoned.");
-                retVal.error();
+                runStats.error();
             }
         }
-        log.info("Best model was epoch {} with score {}.  {} models saved.", retVal.getBestEvent(),
-                retVal.getBestScore(), retVal.getSaveCount());
-        return retVal;
+        log.info("Best model was epoch {} with score {}.  {} models saved.", runStats.getBestEvent(),
+                runStats.getBestScore(), runStats.getSaveCount());
     }
 
 

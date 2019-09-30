@@ -12,6 +12,7 @@ import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
+import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.theseed.utils.ICommand;
 
@@ -24,9 +25,18 @@ import org.theseed.utils.ICommand;
  */
 public class ImproveProcessor extends LearningProcessor implements ICommand {
 
+    /** optimization preference */
+    @Option(name = "--prefer", metaVar = "SCORE", usage = "model aspect to optimize during search")
+    protected RunStats.OptimizationType preference;
+    /** name or index of the label column */
+    @Option(name = "-c", aliases = { "--col" }, metaVar = "0", usage = "input column containing class")
+    protected String labelCol;
+
     @Override
     public boolean parseCommand(String[] args) {
         // Set the defaults.
+        this.preference = RunStats.OptimizationType.ACCURACY;
+        this.labelCol = "1";
         this.setDefaults();
         // This will be the return value.
         boolean retVal = false;
@@ -41,7 +51,9 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 if (! this.modelDir.isDirectory()) {
                     throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 } else {
-                    this.setupTraining();
+                    this.setupTraining(labelCol);
+                    // Read in the testing set.
+                    readTestingSet();
                 }
                 // We made it this far, we can run the application.
                 retVal = true;
@@ -64,8 +76,12 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 this.modelName = new File(this.modelDir, "model.ser");
             MultiLayerNetwork model = ModelSerializer.restoreMultiLayerNetwork(this.modelName, false);
             DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(this.modelName);
+            this.setNormalizer(normalizer);
             // Now  we train the model.
-            RunStats runStats = trainModel(normalizer, model);
+            Trainer trainer = Trainer.create(this.method, this, log);
+            RunStats runStats = RunStats.create(model, this.preference, trainer);
+            this.trainModel(model, runStats, trainer);
+            this.saveModel();
             // Display the configuration.
             MultiLayerNetwork bestModel = runStats.getBestModel();
             TextStringBuilder parms = new TextStringBuilder();
@@ -86,7 +102,7 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 parms.appendln("     Input uses channel vectors.");
             if (runStats.getSaveCount() == 0) {
                 parms.appendln("%nMODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
-                this.clearAccuracy();
+                this.clearRating();
             } else {
                 this.accuracyReport(bestModel, parms, runStats);
             }

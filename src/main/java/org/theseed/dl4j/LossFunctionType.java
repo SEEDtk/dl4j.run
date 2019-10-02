@@ -69,8 +69,10 @@ public enum LossFunctionType {
 
     /**
      * @return the appropriate output layer activation function for this loss function
+     *
+     * @param defaultFunction	default to use if no special function is required
      */
-    public Activation getOutActivation() {
+    public Activation getOutActivation(Activation defaultFunction) {
         Activation retVal;
         switch (this) {
         case XENT :
@@ -81,7 +83,7 @@ public enum LossFunctionType {
             retVal = Activation.HARDTANH;
             break;
         default :
-            retVal = Activation.SOFTMAX;
+            retVal = defaultFunction;
         }
         return retVal;
     }

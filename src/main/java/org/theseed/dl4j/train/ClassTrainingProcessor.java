@@ -235,7 +235,7 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
 
     @Override
     protected Activation getOutActivation() {
-        return this.getLossFunction().getOutActivation();
+        return this.getLossFunction().getOutActivation(Activation.SOFTMAX);
     }
 
 }

@@ -368,10 +368,11 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      *
      * @param runStats	the results of training the model
      */
-    protected TextStringBuilder displayModel(RunStats runStats) {
+    protected TextStringBuilder displayModel(RunStats runStats) throws IOException {
         TextStringBuilder parms = new TextStringBuilder();
         parms.appendNewLine();
         parms.appendln(
+                        "Model file is %s%n" +
                         "=========================== Parameters ===========================%n" +
                         "     iterations  = %12d, batch size    = %12d%n" +
                         "     test size   = %12d, seed number   = %12d%n" +
@@ -390,6 +391,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
                         "     Loss function label weights are %s.%n" +
                         "     %s minutes to run %d %s (best was %d), with %d score bounces.%n" +
                         "     Final score is %g.  %d models saved.",
+                       this.modelName.getCanonicalPath(),
                        this.iterations, this.batchSize, this.testSize, this.seed,
                        this.subFactor, this.method.toString(), this.regulizer,
                        this.gradNorm.toString(), this.biasUpdateMethod.toString(), this.biasRate,

@@ -261,7 +261,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
 
     @Override
     protected Activation getOutActivation() {
-        return Activation.IDENTITY;
+        return this.getLossFunction().getOutActivation(Activation.IDENTITY);
     }
 
     /**

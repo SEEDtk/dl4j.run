@@ -25,7 +25,7 @@ import org.theseed.utils.ICommand;
  * input a training set in a tab-delimited file, a class definition file, and a set of tuning parameters.
  * It will output a trained model and a normalizer, and will display evaluation statistics.
  *
- * It differs from RegressionTrainingProcessor in that the output is a series of numbers.
+ * It differs from ClassTrainingProcessor in that the output is a series of numbers.
  *
  * The positional parameter is the name of the model directory.  The model file (model.ser),
  * and the list of class labels (labels.txt) go in this directory.  The directory must exist,
@@ -215,7 +215,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
             // Output the result.
             String report = parms.toString();
             log.info(report);
-            RunStats.writeTrialReport(this.modelDir, this.comment, report);
+            RunStats.writeTrialReport(this.getTrialFile(), this.comment, report);
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }

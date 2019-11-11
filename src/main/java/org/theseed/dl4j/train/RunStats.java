@@ -295,16 +295,15 @@ abstract public class RunStats {
     /**
      * Write a report to the trial log.
      *
-     * @param logDir	directory containing the trial log
+     * @param logFile	file to contain the trial log
      * @param label		heading comment, if any
      * @param report	text of the report to write, with internal new-lines
      *
      * @throws IOException
      */
-    public static void writeTrialReport(File logDir, String label, String report) throws IOException {
+    public static void writeTrialReport(File logFile, String label, String report) throws IOException {
         // Open the trials log in append mode and write the information about this run.
-        File trials = new File(logDir, "trials.log");
-        PrintWriter trialWriter = new PrintWriter(new FileWriter(trials, true));
+        PrintWriter trialWriter = new PrintWriter(new FileWriter(logFile, true));
         trialWriter.println("******************************************************************");
         if (label != null)
             trialWriter.print(label);

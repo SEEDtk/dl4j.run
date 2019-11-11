@@ -93,6 +93,10 @@ public class LearningProcessor {
     /** model directory */
     @Argument(index = 0, metaVar = "modelDir", usage = "model directory", required = true)
     protected File modelDir;
+    /** trials file name */
+    @Option(name = "--trials", usage = "name for trials log file")
+    private String trialName;
+
 
     /**
      * Format a ratio for display in the evaluation metrics matrix.
@@ -142,6 +146,7 @@ public class LearningProcessor {
         this.earlyStop = 200;
         this.modelName = null;
         this.comment = null;
+        this.trialName = "trials.log";
         // Clear the rating value and the normalizer.
         this.bestRating = 0.0;
         this.normalizer = null;
@@ -459,6 +464,20 @@ public class LearningProcessor {
     protected void setNormalizer(DataNormalization normalizer) {
         this.normalizer = normalizer;
         this.reader.setNormalizer(normalizer);
+    }
+
+    /**
+     * @return the trial file name
+     */
+    protected File getTrialFile() {
+        return new File(this.modelDir, this.trialName);
+    }
+
+    /**
+     * @return the trial file base name
+     */
+    protected String getTrialName() {
+        return this.trialName;
     }
 
 }

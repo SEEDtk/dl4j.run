@@ -227,7 +227,7 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
             // Output the result.
             String report = parms.toString();
             log.info(report);
-            RunStats.writeTrialReport(this.modelDir, this.comment, report);
+            RunStats.writeTrialReport(this.getTrialFile(), this.comment, report);
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }

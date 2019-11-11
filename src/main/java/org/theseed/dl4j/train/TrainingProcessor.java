@@ -354,9 +354,10 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         writer.format("## Valid updater methods are %s.%n", functions);
         writer.format("--updater %s\t# weight gradient updater method (uses learning rate)%n", this.weightUpdateMethod.name());
         writer.format("--bUpdater %s\t# bias gradient updater method (uses update rate)%n", this.biasUpdateMethod.name());
-        writer.format("--name %s\t# model file name%n", this.modelName);
         commentFlag = (this.rawMode ? "" : "# ");
         writer.format("%s--raw\t# suppress input normalization%n", commentFlag);
+        writer.format("--name %s\t# model file name%n", this.modelName);
+        writer.format("--trials %s\t# trial log file name", this.getTrialName());
         if (this.comment == null)
             writer.println("# --comment The comment appears in the trial log.");
         else

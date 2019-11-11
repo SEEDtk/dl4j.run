@@ -174,7 +174,7 @@ public class SearchProcessor implements ICommand {
             log.info(report);
             // Write it to the trial file.
             try {
-                RunStats.writeTrialReport(modelDir, "Summary of Search-Mode Results", report);
+                RunStats.writeTrialReport(processor.getTrialFile(), "Summary of Search-Mode Results", report);
             } catch (IOException e) {
                 System.err.println("Error writing trial.log:" + e.getMessage());
             }

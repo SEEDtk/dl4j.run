@@ -228,8 +228,8 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             for (int i = 0; i < buffer.length; i++)
                 buffer[i] = labelSums.getDouble(i) / base;
             this.lossWeights = new FloatList(buffer);
-        } else if (this.lossWeights.size() != this.getLabels().size())
-            throw new IllegalArgumentException("The number of loss weights must match the number of labels.");
+        } else if (this.lossWeights.size() > this.getLabels().size())
+            throw new IllegalArgumentException("The number of loss weights cannot be more than the number of labels.");
         // Insure the number of filters or strides is not greater than the number of convolutions.
         if (! this.convolutions.isEmpty()) {
             if (this.filterSizes.size() > this.convolutions.size())
@@ -544,7 +544,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         }
         // Add the output layer.
         this.outActivation = this.getOutActivation();
-        ILossFunction lossComputer = this.lossFunction.create(this.lossWeights.getValues());
+        ILossFunction lossComputer = this.lossFunction.create(this.lossWeights.getValues(this.getLabels().size()));
         log.info("Creating output layer with input width {} and {} outputs.", widthComputer.getOutWidth(),
                 outputCount);
         configuration.layer(new OutputLayer.Builder()

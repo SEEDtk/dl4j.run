@@ -6,9 +6,9 @@
 
   <groupId>org.theseed</groupId>
   <artifactId>dl4j</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>1.0.0</version>
 
-  <name>prototype</name>
+  <name>dl4j.run</name>
   <description>Deep Learning Training Engine</description>
   <url>https://www.patricbrc.org</url>
 

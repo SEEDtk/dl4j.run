@@ -39,7 +39,9 @@ abstract public class RunStats {
         /** save the model with the highest Pearson correlation */
         PEARSON,
         /** save the model with the highest pseudo-accuracy */
-        ACCURACY
+        ACCURACY,
+        /** save the model with the highest bound-accuracy */
+        BOUNDED
         ;
     }
 
@@ -153,6 +155,8 @@ abstract public class RunStats {
         case ACCURACY:
             retVal = new RunStats.PseudoAccuracy(model, processor);
             break;
+        case BOUNDED:
+            retVal = new RunStats.BoundAccuracy(model, processor);
         }
         retVal.eventsName = trainer.eventsName();
         return retVal;
@@ -348,28 +352,6 @@ abstract public class RunStats {
     }
 
     /**
-     * Compute the pseudo-accuracy for a given column.  The pseudo-accuracy is the fraction of rows
-     * where the output value in the column is on the same side of the bound as the value in the testing
-     * set.
-     *
-     * @param testingSet	testing set containing desired results
-     * @param col			label column to process
-     * @param bound			threshold for pseudo-accuracy
-     *
-     * @return the pseudo-accuracy for the given label column
-     */
-    public double pseudoAccuracy(DataSet testingSet, int col, double bound) {
-        INDArray expect = testingSet.getLabels();
-        int goodCount = 0;
-        for (long r = 0; r < expect.rows(); r++) {
-            boolean eDiff = (expect.getDouble(r, col) >= bound);
-            boolean oDiff = (output.getDouble(r, col) >= bound);
-            if (eDiff == oDiff) goodCount++;
-        }
-        return (((double) goodCount) / expect.rows());
-    }
-
-    /**
      * Compute the pseudo-accuracy for all columns.  The pseudo-accuracy is the fraction of entries
      * where the output value is on the same side of the bound as the value in the testing
      * set.
@@ -393,6 +375,28 @@ abstract public class RunStats {
         }
         return (((double) goodCount) / total);
     }
+    /**
+     * Compute the bound accuracy for all columns.  The bound accuracy is the fraction of entries
+     * where the output value rounds to the value in the testing set.
+     *
+     * @param testingSet	testing set containing desired results
+     *
+     * @return the pseudo-accuracy for the given label column
+     */
+    public double boundAccuracy(DataSet testingSet) {
+        INDArray expect = testingSet.getLabels();
+        int goodCount = 0;
+        int total = 0;
+        for (long r = 0; r < expect.rows(); r++) {
+            for (long c = 0; c < expect.columns(); c++) {
+                double oValue = Math.round(output.getDouble(r, c));
+                if (oValue == expect.getDouble(r, c)) goodCount++;
+                total++;
+            }
+        }
+        return (((double) goodCount) / total);
+    }
+
 
     /** @return the alternate score preferred by this criterion
      *
@@ -631,11 +635,34 @@ abstract public class RunStats {
    }
 
    /**
+    * Subclass for a variant of pseudo-accuracy where instead of a 1,0 result we are targeting integer results.
+    *
+    */
+public static class BoundAccuracy extends PseudoAccuracy {
+
+    protected BoundAccuracy(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
+        super(model, processor);
+    }
+
+    /**
+     * @return the alternate score preferred by this criterion
+     *
+     * @param eval		RegressionEvaluation object containing the scores
+     * @param testingSet	testing set containing the desired outcomes
+     */
+    protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
+        return boundAccuracy(testingSet);
+    }
+
+}
+
+
+   /**
     * Subclass for training regression models by pseudo-accuracy.
     */
   public static class PseudoAccuracy extends RunStats {
 
-      private double bound;
+      protected double bound;
 
       protected PseudoAccuracy(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
           super(model);
@@ -680,5 +707,6 @@ abstract public class RunStats {
       }
 
   }
+
 
 }

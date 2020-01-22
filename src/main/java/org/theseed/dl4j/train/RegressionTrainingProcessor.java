@@ -222,7 +222,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     }
 
     /**
-     * Write the performance report.  This is a primary difference because of the way accuracy is measured.
+     * Write the performance report.  This is different from classification because of the way accuracy is measured.
      *
      * @param model		the model to be reported
      * @param buffer	the TextStringBuilder to contain the report
@@ -232,8 +232,8 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
         // Evaluate the model.
         RegressionEvaluation eval = runStats.scoreModel(model, getTestingSet(), getLabels());
         // Write the header.
-        buffer.appendln("%n%-11s %11s %11s %11s %11s %11s", "label", "MAE", "MSE", "PC", "R Squared", "Pseudo-Acc");
-        buffer.appendln(StringUtils.repeat('-',  71));
+        buffer.appendln("%n%-21s %11s %11s %11s %11s %11s %11s", "label", "MAE", "MSE", "PC", "R Squared", "Pseudo-Acc", "Bound-Acc");
+        buffer.appendln(StringUtils.repeat('-', 93));
         // We need the output and the testing set labels for the pseudo-accuracy.
         INDArray output = runStats.getOutput();
         INDArray expect = this.getTestingSet().getLabels();
@@ -241,14 +241,19 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
         for (int i = 0; i < this.getLabels().size(); i++) {
             String label = this.getLabels().get(i);
             int goodCount = 0;
+            int closeCount = 0;
             for (long r = 0; r < this.testSize; r++) {
-                boolean eDiff = (expect.getDouble(r, i) >= this.bound);
-                boolean oDiff = (output.getDouble(r, i) >= this.bound);
+                double expected = expect.getDouble(r, i);
+                double actual = output.getDouble(r, i);
+                boolean eDiff = (expected >= this.bound);
+                boolean oDiff = (actual >= this.bound);
                 if (eDiff == oDiff) goodCount++;
+                if (Math.round(actual) == expected) closeCount++;
             }
             String accuracy = LearningProcessor.formatRatio(goodCount, this.testSize);
-            buffer.appendln("%-11s %11.4f %11.4f %11.4f %11.4f %11s", label, eval.meanAbsoluteError(i), eval.meanSquaredError(i),
-                    eval.pearsonCorrelation(i), eval.rSquared(i), accuracy);
+            String closeness = LearningProcessor.formatRatio(closeCount, this.testSize);
+            buffer.appendln("%-21s %11.4f %11.4f %11.4f %11.4f %11s %11s", label, eval.meanAbsoluteError(i), eval.meanSquaredError(i),
+                    eval.pearsonCorrelation(i), eval.rSquared(i), accuracy, closeness);
         }
         if (this.getLabels().size() > 1) {
             // Write the average stats.

@@ -20,7 +20,8 @@ import org.theseed.utils.Parms;
  * Main entry point for the Deep Learning utility.  The first parameter is a command-- use "train" to
  * train a classification model with a training set and "rtrain" to train a regression model.
  * Use "predict" to apply a model to a prediction set.  Use "search" to test multiple model configurations.
- * Use "multirun" to run predictions on multiple models in a single directory.
+ * Use "multirun" to run predictions on multiple models in a single directory, "jackknife" to do a jackknife
+ * analysis that creates a model for each column based on all the others.
  *
  * If the command is followed by an equal sign, then the part after the equal sign should be a file name.
  * The parameters will be read from the file. Otherwise, the parameters are taken from the remainder of
@@ -106,6 +107,7 @@ public class App
                 System.err.println("Command code \"multirun\":");
                 runObject = new MultiRunProcessor();
                 execute(runObject, args);
+                System.err.println();
                 break;
             default :
                 throw new IllegalArgumentException("Invalid command code " + command[0] + ".");

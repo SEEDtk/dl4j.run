@@ -469,7 +469,7 @@ public class LearningProcessor {
     /**
      * @return the trial file name
      */
-    protected File getTrialFile() {
+    public File getTrialFile() {
         return new File(this.modelDir, this.trialName);
     }
 

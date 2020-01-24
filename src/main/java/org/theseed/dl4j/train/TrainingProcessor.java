@@ -598,7 +598,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     /**
      * Force saving of a model to the model directory.
      */
-    protected void saveModelForced() throws IOException {
+    public void saveModelForced() throws IOException {
         super.saveModel();
     }
 

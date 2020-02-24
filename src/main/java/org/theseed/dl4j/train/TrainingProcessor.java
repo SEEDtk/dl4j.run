@@ -602,4 +602,14 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         super.saveModel();
     }
 
+    /**
+     * Force saving of the model to a specific file.
+     *
+     * @param file		file in which to save the model
+     */
+    public void saveModelForced(File file) throws IOException {
+        this.modelName = file;
+        saveModelForced();
+    }
+
 }

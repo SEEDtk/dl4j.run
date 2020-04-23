@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.App;
 import org.theseed.utils.ICommand;
-import org.theseed.utils.Parms;
+import org.theseed.utils.MultiParms;
 
 /**
  * In search mode, we accept a parameter file that specifies multiple values for one or more
@@ -44,7 +44,7 @@ public class SearchProcessor implements ICommand {
 
     // FIELDS
     /** iterator that runs through the parameter combinations */
-    private Parms parmIterator;
+    private MultiParms parmIterator;
 
     // COMMAND LINE
 
@@ -80,7 +80,7 @@ public class SearchProcessor implements ICommand {
                 if (! this.modelDir.isDirectory()) {
                     throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 } else {
-                    this.parmIterator = new Parms(this.parmFile);
+                    this.parmIterator = new MultiParms(this.parmFile);
                     // Denote we have been successful.
                     retVal = true;
                 }

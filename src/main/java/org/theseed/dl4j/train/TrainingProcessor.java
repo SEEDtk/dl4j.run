@@ -307,7 +307,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         writer.format("--iter %d\t# number of training iterations per batch%n", this.iterations);
         writer.format("--batchSize %d\t# size of each training batch%n", this.batchSize);
         writer.format("--testSize %d\t# size of the testing set, taken from the beginning of the file%n", this.testSize);
-        String functions = Stream.of(Type.values()).map(Type::name).collect(Collectors.joining(", "));
+        String functions = Stream.of(Trainer.Type.values()).map(Trainer.Type::name).collect(Collectors.joining(", "));
         writer.format("## Valid training methods are %s.%n", functions);
         writer.format("--method %s\t# training set processing method%n", this.method.toString());
         writer.format("--earlyStop %d\t# early-stop useless-iteration limit%n", this.earlyStop);

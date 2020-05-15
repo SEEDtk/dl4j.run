@@ -36,25 +36,25 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
 
     // FIELDS
     /** input tabbed file */
-    TabbedLineReader reader;
+    private TabbedLineReader reader;
     /** list of valid labels */
-    ArrayList<String> labels;
+    private ArrayList<String> labels;
     /** map of label columns for regression labels; array index is column index, value is label column */
-    int[] labelMap;
+    private int[] labelMap;
     /** column index of label column */
-    int labelIdx;
+    private int labelIdx;
     /** normalizer to be applied to all batches of input */
-    DataNormalization normalizer;
+    private DataNormalization normalizer;
     /** current batch size */
-    int batchSize;
+    private int batchSize;
     /** buffer array for holding input */
-    ArrayList<Entry> buffer;
+    private ArrayList<Entry> buffer;
     /** array of meta-column indices, or -1 if the column is not meta-data */
-    int[] metaColFlag;
+    private int[] metaColFlag;
     /** number of inputs */
-    int width;
+    private int width;
     /** number of meta-data columns */
-    int metaWidth;
+    private int metaWidth;
 
     /** null array index */
     private static final int ANULL = -1;
@@ -211,6 +211,19 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
         }
     }
 
+    /**
+     * @return a list of the names for each feature column
+     */
+    public List<String> getFeatureNames() {
+        List<String> retVal = new ArrayList<String>(this.width);
+        String[] names = this.reader.getLabels();
+        for (int i = 0; i < this.reader.size(); i++) {
+            if (i != this.labelIdx && this.labelMap[i] < 0 && this.metaColFlag[i] == ANULL)
+                retVal.add(names[i]);
+        }
+        return retVal;
+    }
+
     @Override
     public Iterator<DataSet> iterator() {
         return this;
@@ -262,14 +275,14 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
                     record.feature[pos++] = line.get(i);
                 }
             }
-            this.buffer.add(record);
+            this.getBuffer().add(record);
         }
         // Create and fill the feature and label arrays.
         INDArray features = createFeatureArray();
-        INDArray labels = Nd4j.zeros(this.buffer.size(), this.labels.size());
-        ArrayList<String> metaData = (haveMeta ? new ArrayList<String>(this.buffer.size()) : null);
+        INDArray labels = Nd4j.zeros(this.getBuffer().size(), this.labels.size());
+        ArrayList<String> metaData = (haveMeta ? new ArrayList<String>(this.getBuffer().size()) : null);
         int row = 0;
-        for (Entry record : this.buffer) {
+        for (Entry record : this.getBuffer()) {
             features.putRow(row, formatFeature(record));
             if (haveLabels) {
                 labels.putRow(row, record.labelVals);
@@ -277,7 +290,7 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
             if (haveMeta) metaData.add(String.join("\t", record.metaData));
             row++;
         }
-        this.buffer.clear();
+        this.getBuffer().clear();
         // Build the dataset.
         DataSet retVal = new DataSet();
         retVal.setFeatures(features);
@@ -341,7 +354,7 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
      * @return an empty feature array for the output
      */
     protected INDArray createFeatureArray() {
-        int[] shape = new int[] { this.buffer.size(), 1, 1,
+        int[] shape = new int[] { this.getBuffer().size(), 1, 1,
                 this.getWidth() };
         return Nd4j.createUninitialized(shape);
     }
@@ -408,5 +421,12 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
         labelsIn.close();
         return retVal;
     }
+
+	/**
+	 * @return the buffer
+	 */
+	public ArrayList<Entry> getBuffer() {
+		return buffer;
+	}
 
 }

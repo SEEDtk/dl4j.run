@@ -101,8 +101,12 @@ public class AppTest extends TestCase
                         equalTo(1.0));
             }
         }
+        List<String> names = reader.getFeatureNames();
+        assertThat(names, contains("sepal_length", "sepal_width", "petal_length", "petal_width"));
         inFile = new File("src/test", "samples.tbl");
         reader = new TabbedDataSetReader(inFile, "lcol", labels, Arrays.asList("mcol", "mcol2"));
+        names = reader.getFeatureNames();
+        assertThat(names, contains("col1", "col2", "col3"));
         set1 = reader.next();
         assertThat("Wrong number of classes.", set1.numOutcomes(), equalTo(3));
         assertThat("Wrong batch size.", set1.numExamples(), equalTo(2));
@@ -123,6 +127,8 @@ public class AppTest extends TestCase
         inFile = new File("src/test", "regression.tbl");
         reader = new TabbedDataSetReader(inFile, null, labels, Arrays.asList("mcol", "mcol2"));
         reader.setRegressionColumns();
+        names = reader.getFeatureNames();
+        assertThat(names, contains("col1", "col2", "col3"));
         set1 = reader.next();
         assertThat("Wrong number of classes.", set1.numOutcomes(), equalTo(3));
         assertThat("Wrong batch size.", set1.numExamples(), equalTo(2));

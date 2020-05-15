@@ -234,6 +234,49 @@ public class LearningProcessor {
     }
 
     /**
+     * @return a string describing the formula for a single-layer regression model with one result
+     *
+     * @param model		the model to dump
+     */
+    public String describeModel(MultiLayerNetwork model) {
+        TextStringBuilder retVal = new TextStringBuilder();
+        retVal.appendNewLine();
+        org.deeplearning4j.nn.api.Layer layer = model.getLayers()[0];
+        // Get the coefficients.
+        INDArray weights = layer.paramTable().get("W");
+        INDArray biases = layer.paramTable().get("b");
+        // Get the corresponding column names.
+        List<String> names = this.reader.getFeatureNames();
+        // Remember the start of the current line.
+        int line = 0;
+        boolean first = true;
+        for (int i = 0; i < weights.length(); i++) {
+            double value = weights.getDouble(i);
+            // Add this part of the formula.  Note that a negative weight is turned to
+            // subtraction except on the first entry.
+            if (value != 0.0) {
+                if (! first) {
+                    String sep = " + ";
+                    if (value < 0) {
+                        sep = " - ";
+                        value = -value;
+                    }
+                    retVal.append(sep);
+                }
+                retVal.append("%4.2g*%s", value, names.get(i));
+                first = false;
+            }
+            // Start the next line if we're getting long.
+            if (retVal.length() - line >= 70) {
+                retVal.appendNewLine().appendPadding(8, ' ');
+                line = retVal.length();
+            }
+        }
+        // Add the bias and close the formula.
+        retVal.append(" + %4.2g = Confidence%n", biases.getDouble(0));
+        return retVal.toString();
+    }
+    /**
      * @return a string describing the parameters of the specified model, layer by layer
      *
      * @param model		the model to dump

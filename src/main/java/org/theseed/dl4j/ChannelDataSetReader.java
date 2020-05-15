@@ -157,7 +157,7 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
      */
     @Override
     protected INDArray createFeatureArray() {
-        int[] shape = new int[] { this.buffer.size(), this.channels, 1,
+        int[] shape = new int[] { this.getBuffer().size(), this.channels, 1,
                 this.getWidth() };
         return Nd4j.createUninitialized(shape);
     }

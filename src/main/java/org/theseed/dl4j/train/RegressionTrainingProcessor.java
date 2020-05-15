@@ -147,7 +147,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
         String typeList = Stream.of(RunStats.RegressionType.values()).map(RunStats.RegressionType::name).collect(Collectors.joining(", "));
         writer.format("## Valid optimization preferences are %s.%n", typeList);
         writer.format("--prefer %s\t# optimization preference%n", this.prefer);
-        writer.format("--bound %g\tthreshold for pseudo-accuracy%n", this.bound);
+        writer.format("--bound %g\t# threshold for pseudo-accuracy%n", this.bound);
         writeModelParms(writer);
         writer.close();
     }
@@ -259,6 +259,9 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
             // Write the average stats.
             buffer.appendln("%-11s %11.4f %11.4f %11.4f %11.4f", "AVERAGE", eval.averageMeanAbsoluteError(),
                     eval.averageMeanSquaredError(), eval.averagePearsonCorrelation(), eval.averageRSquared());
+        } else if (model.getnLayers() == 1) {
+            // Here we have a single-layer, single-label model.  Write the formula.
+            buffer.appendln(this.describeModel(model));
         }
         // Save the score in case this is a search.
         this.setRating(runStats.getBestRating());

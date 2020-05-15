@@ -254,7 +254,7 @@ public class MultiRunProcessor implements ICommand {
                 System.out.println();
             }
         } catch (Exception e) {
-            e.printStackTrace(System.err);
+            log.error("EXECUTION ERROR.", e);
         }
     }
 

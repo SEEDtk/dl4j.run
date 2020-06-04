@@ -52,8 +52,6 @@ import org.theseed.utils.ICommand;
  *
  * The following command-line options are supported.
  *
- * -c	index (1-based) or name of the column containing the classification labels; the
- * 		default is 1 (first column)
  * -n	number of iterations to run on each batch; the default is 1000
  * -b	size of each batch; the default is 500
  * -t	size of the testing set, which is the first batch read and is used to compute
@@ -259,7 +257,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
             // Write the average stats.
             buffer.appendln("%-11s %11.4f %11.4f %11.4f %11.4f", "AVERAGE", eval.averageMeanAbsoluteError(),
                     eval.averageMeanSquaredError(), eval.averagePearsonCorrelation(), eval.averageRSquared());
-        } else if (model.getnLayers() == 1) {
+        } else if (model.getnLayers() == 1 && this.getChannelCount() == 1) {
             // Here we have a single-layer, single-label model.  Write the formula.
             buffer.appendln(this.describeModel(model));
         }

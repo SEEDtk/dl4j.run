@@ -189,7 +189,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         this.regFactor = 0.3;
         this.biasRate = 0.2;
         this.learnRate = 1e-3;
-        this.lossFunction = LossFunctionType.MCXENT;
+        this.lossFunction = LossFunctionType.L2;
         this.trainingFile = null;
         this.regMode = Regularization.Mode.GAUSS;
         this.activationType = Activation.RELU;

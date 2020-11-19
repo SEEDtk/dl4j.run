@@ -255,7 +255,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
         }
         if (this.getLabels().size() > 1) {
             // Write the average stats.
-            buffer.appendln("%-11s %11.4f %11.4f %11.4f %11.4f", "AVERAGE", eval.averageMeanAbsoluteError(),
+            buffer.appendln("%-21s %11.4f %11.4f %11.4f %11.4f", "AVERAGE", eval.averageMeanAbsoluteError(),
                     eval.averageMeanSquaredError(), eval.averagePearsonCorrelation(), eval.averageRSquared());
         } else if (model.getnLayers() == 1 && this.getChannelCount() == 1) {
             // Here we have a single-layer, single-label model.  Write the formula.

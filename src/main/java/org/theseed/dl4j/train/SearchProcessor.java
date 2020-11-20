@@ -97,35 +97,35 @@ public class SearchProcessor implements ICommand {
 
     @Override
     public void run() {
-        try {
-            // We loop through the parameter combinations, calling the training processor.
-            TrainingProcessor processor = TrainingProcessor.create(modelType);
-            // Suppress saving of the model.
-            processor.setSearchMode();
-            // These variables track our progress and success.
-            int iteration = 1;
-            double bestRating = Double.NEGATIVE_INFINITY;
-            int bestIteration = 0;
-            // Set up our summary matrix.  Note each array will contain one entry per parameter plus a slot for accuracy.
-            HashMap<String, String> varMap = this.parmIterator.getVariables();
-            String[] headings = ArrayUtils.insert(varMap.size(), this.parmIterator.getOptions(), "    Rating");
-            ArrayList<String[]> data = new ArrayList<String[]>();
-            data.add(headings);
-            // This is a buffer to hold the parameters.
-            String[] parmBuffer = new String[this.parmIterator.size() + 3];
-            while (this.parmIterator.hasNext()) {
-                // Create the parameter array.
-                List<String> theseParms = this.parmIterator.next();
-                // Save the values.
-                String[] values = new String[varMap.size() + 1];
-                for (int i = 0; i < headings.length; i++)
-                    values[i] = varMap.get(headings[i]);
-                // Add the comment and the model directory.
-                theseParms.add("--comment");
-                theseParms.add(String.format("Iteration %d: %s", iteration, this.parmIterator));
-                theseParms.add(this.modelDir.getPath());
-                // Run the experiment.
-                String[] actualParms = theseParms.toArray(parmBuffer);
+        // We loop through the parameter combinations, calling the training processor.
+        TrainingProcessor processor = TrainingProcessor.create(modelType);
+        // Suppress saving of the model.
+        processor.setSearchMode();
+        // These variables track our progress and success.
+        int iteration = 1;
+        double bestRating = Double.NEGATIVE_INFINITY;
+        int bestIteration = 0;
+        // Set up our summary matrix.  Note each array will contain one entry per parameter plus a slot for accuracy.
+        HashMap<String, String> varMap = this.parmIterator.getVariables();
+        String[] headings = ArrayUtils.insert(varMap.size(), this.parmIterator.getOptions(), "    Rating");
+        ArrayList<String[]> data = new ArrayList<String[]>();
+        data.add(headings);
+        // This is a buffer to hold the parameters.
+        String[] parmBuffer = new String[this.parmIterator.size() + 3];
+        while (this.parmIterator.hasNext()) {
+            // Create the parameter array.
+            List<String> theseParms = this.parmIterator.next();
+            // Save the values.
+            String[] values = new String[varMap.size() + 1];
+            for (int i = 0; i < headings.length; i++)
+                values[i] = varMap.get(headings[i]);
+            // Add the comment and the model directory.
+            theseParms.add("--comment");
+            theseParms.add(String.format("Iteration %d: %s", iteration, this.parmIterator));
+            theseParms.add(this.modelDir.getPath());
+            // Run the experiment.
+            String[] actualParms = theseParms.toArray(parmBuffer);
+            try {
                 App.execute(processor, actualParms);
                 // Save the accuracy.
                 double newRating = processor.getRating();
@@ -142,44 +142,46 @@ public class SearchProcessor implements ICommand {
                 }
                 // Save this row of the summary array.
                 data.add(values);
-                // Count the iteration.
-                iteration++;
+            } catch (Exception e) {
+                log.error("Exception in iteration {}: {}", iteration, e.getMessage());
+                e.printStackTrace(System.err);
+                log.error("Iteration aborted due to error.");
             }
-            // Now display the result matrix.  First we compute the width for each column.
-            int[] widths = new int[varMap.size() + 1];
-            Arrays.fill(widths, 8);
-            for (String[] cols : data)
-                for (int i = 0; i < widths.length; i++)
-                    widths[i] = Math.max(cols[i].length(), widths[i]);
-            // Compute the total width.  We have 7 at the beginning and an extra space before each column.
-            int totWidth = Arrays.stream(widths).sum() + widths.length + 7;
-            String boundary = StringUtils.repeat('=', totWidth);
-            // We will build the report in here.
-            TextStringBuilder buffer = new TextStringBuilder((totWidth + 2) * (data.size() + 4));
-            buffer.appendNewLine();
-            buffer.appendln(boundary);
-            // Write out the heading line.
-            buffer.appendln(this.writeLine(widths, totWidth, "# ", data.get(0)));
-            // Write out a space.
-            buffer.appendln("");
-            // Write out the data lines.
-            for (int i = 1; i < data.size(); i++) {
-                String label = Integer.toString(i) + (i == bestIteration ? "*" : " ");
-                buffer.appendln(this.writeLine(widths, totWidth, label, data.get(i)));
-            }
-            // Write out a trailer line.
-            buffer.appendln(boundary);
-            // Write it to the output log.
-            String report = buffer.toString();
-            log.info(report);
-            // Write it to the trial file.
-            try {
-                RunStats.writeTrialReport(processor.getTrialFile(), "Summary of Search-Mode Results", report);
-            } catch (IOException e) {
-                System.err.println("Error writing trial.log:" + e.getMessage());
-            }
+            // Count the iteration.
+            iteration++;
+        }
+        // Now display the result matrix.  First we compute the width for each column.
+        int[] widths = new int[varMap.size() + 1];
+        Arrays.fill(widths, 8);
+        for (String[] cols : data)
+            for (int i = 0; i < widths.length; i++)
+                widths[i] = Math.max(cols[i].length(), widths[i]);
+        // Compute the total width.  We have 7 at the beginning and an extra space before each column.
+        int totWidth = Arrays.stream(widths).sum() + widths.length + 7;
+        String boundary = StringUtils.repeat('=', totWidth);
+        // We will build the report in here.
+        TextStringBuilder buffer = new TextStringBuilder((totWidth + 2) * (data.size() + 4));
+        buffer.appendNewLine();
+        buffer.appendln(boundary);
+        // Write out the heading line.
+        buffer.appendln(this.writeLine(widths, totWidth, "# ", data.get(0)));
+        // Write out a space.
+        buffer.appendln("");
+        // Write out the data lines.
+        for (int i = 1; i < data.size(); i++) {
+            String label = Integer.toString(i) + (i == bestIteration ? "*" : " ");
+            buffer.appendln(this.writeLine(widths, totWidth, label, data.get(i)));
+        }
+        // Write out a trailer line.
+        buffer.appendln(boundary);
+        // Write it to the output log.
+        String report = buffer.toString();
+        log.info(report);
+        // Write it to the trial file.
+        try {
+            RunStats.writeTrialReport(processor.getTrialFile(), "Summary of Search-Mode Results", report);
         } catch (IOException e) {
-            e.printStackTrace(System.err);
+            System.err.println("Error writing trial.log:" + e.getMessage());
         }
     }
 

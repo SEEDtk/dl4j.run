@@ -6,6 +6,7 @@ package org.theseed.dl4j.train;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -228,8 +229,8 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
             String report = parms.toString();
             log.info(report);
             RunStats.writeTrialReport(this.getTrialFile(), this.comment, report);
-        } catch (Exception e) {
-            e.printStackTrace(System.err);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

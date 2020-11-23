@@ -97,7 +97,7 @@ public class PredictionProcessor implements ICommand {
     @Option(name="--name", usage="model file name (default is model.ser in model directory)")
     private File modelName;
 
-    /** output all confidences */
+    /** output all confidences instead of output values */
     @Option(name="--regression", aliases={"-r"}, usage="output in regression mode rather than classification mode")
     private boolean confOutput;
 
@@ -141,6 +141,7 @@ public class PredictionProcessor implements ICommand {
                             this.modelName = new File(this.modelDir, "model.ser");
                         this.model = ModelSerializer.restoreMultiLayerNetwork(this.modelName, false);
                         DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(this.modelName);
+                        log.info("Model read from {}.", this.modelName);
                         // Determine the input type and get the appropriate reader.
                         File channelFile = new File(this.modelDir, "channels.tbl");
                         if (! channelFile.exists()) {
@@ -154,14 +155,16 @@ public class PredictionProcessor implements ICommand {
                             this.reader = new ChannelDataSetReader(this.inputFile, metaList, channelMap);
                         }
                         this.reader.setNormalizer(normalizer);
-                        // Write the output headers.
+                        // Write the output headers.  Note that if there is only one output column, we use the
+                        // supplied name.
                         String metaHeader = StringUtils.join(this.metaList, '\t');
                         String confColumns;
-                        if (this.confOutput) {
-                            confColumns = StringUtils.join(this.labels, '\t');
-                        } else {
+                        if (! this.confOutput)
                             confColumns = this.outColumn + "\tconfidence";
-                        }
+                        else if (this.labels.size() == 1)
+                            confColumns = this.outColumn;
+                        else
+                            confColumns = StringUtils.join(this.labels, '\t');
                         System.out.format("%s\t%s%n", metaHeader, confColumns);
                         // Denote we're ready.
                         retVal = true;
@@ -179,6 +182,8 @@ public class PredictionProcessor implements ICommand {
     @Override
     public void run() {
         // Loop through the data batches.
+        long start = System.currentTimeMillis();
+        int rows = 0;
         for (DataSet batch : this.reader) {
             // Get the features and the associated metadata.
             INDArray features = batch.getFeatures();
@@ -212,9 +217,11 @@ public class PredictionProcessor implements ICommand {
                     String prediction = this.labels.get(jBest);
                     System.out.format("%s\t%s\t%12.8g%n", metaDatum, prediction, vBest);
                 }
-                // Advance the row index.
+                // Advance the row index and count.
                 i++;
+                rows++;
             }
         }
+        log.info("{} data rows processed in {} seconds.", rows, (System.currentTimeMillis() - start) / 1000);
     }
 }

@@ -231,28 +231,46 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
         // Evaluate the model.
         RegressionEvaluation eval = runStats.scoreModel(model, getTestingSet(), getLabels());
         // Write the header.
-        buffer.appendln("%n%-21s %11s %11s %11s %11s %11s %11s", "label", "MAE", "MSE", "PC", "R Squared", "Pseudo-Acc", "Bound-Acc");
-        buffer.appendln(StringUtils.repeat('-', 93));
+        buffer.appendln("%n%-21s %11s %11s %11s %11s %11s %11s %11s %11s", "label", "MAE", "MSE", "Pearson's", "R Squared", "Pseudo-Acc", "Round-Acc", "Closeness", "Outlie Lim");
+        buffer.appendln(StringUtils.repeat('-', 117));
         // We need the output and the testing set labels for the pseudo-accuracy.
         INDArray output = runStats.getOutput();
         INDArray expect = this.getTestingSet().getLabels();
         // Write the stats for each column.
         for (int i = 0; i < this.getLabels().size(); i++) {
             String label = this.getLabels().get(i);
+            // These are used to compute the outliers.
+            double mean = eval.meanAbsoluteError(i);
+            double sDev = Math.sqrt((eval.meanSquaredError(i) - mean * mean) / this.testSize);
+            double maxError = mean + 2 * sDev;
+            double sumCleanError = 0.0;
+            int outliers = 0;
+            // These will track the pseudo-accuracies.
             int goodCount = 0;
             int closeCount = 0;
-            for (long r = 0; r < this.testSize; r++) {
-                double expected = expect.getDouble(r, i);
-                double actual = output.getDouble(r, i);
-                boolean eDiff = (expected >= this.bound);
-                boolean oDiff = (actual >= this.bound);
+            // Loop through the data;
+            for (int r = 0; r < this.testSize; r++) {
+                double e = expect.getDouble(r, i);
+                double o = output.getDouble(r, i);
+                double err = Math.abs(e - o);
+                if (err <= maxError) {
+                    sumCleanError += err;
+                } else {
+                    outliers++;
+                }
+                boolean eDiff = (e >= this.bound);
+                boolean oDiff = (o >= this.bound);
                 if (eDiff == oDiff) goodCount++;
-                if (Math.round(actual) == expected) closeCount++;
+                if (Math.round(o) == e) closeCount++;
             }
             String accuracy = LearningProcessor.formatRatio(goodCount, this.testSize);
-            String closeness = LearningProcessor.formatRatio(closeCount, this.testSize);
-            buffer.appendln("%-21s %11.4f %11.4f %11.4f %11.4f %11s %11s", label, eval.meanAbsoluteError(i), eval.meanSquaredError(i),
-                    eval.pearsonCorrelation(i), eval.rSquared(i), accuracy, closeness);
+            String boundAcc = LearningProcessor.formatRatio(closeCount, this.testSize);
+            // Now we compute the clean average error.
+            String closeness = LearningProcessor.formatRatio(sumCleanError * (this.testSize + outliers),
+                    this.testSize * this.testSize);
+            buffer.appendln("%-21s %11.4f %11.4f %11.4f %11.4f %11s %11s %11s %11.4f", label, eval.meanAbsoluteError(i),
+                    eval.meanSquaredError(i), eval.pearsonCorrelation(i), eval.rSquared(i), accuracy, boundAcc,
+                    closeness, maxError);
         }
         if (this.getLabels().size() > 1) {
             // Write the average stats.

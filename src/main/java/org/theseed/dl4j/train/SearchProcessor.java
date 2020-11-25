@@ -34,6 +34,14 @@ import org.theseed.utils.MultiParms;
  * class, however, no value should be specified for the "--comment" option, and the model
  * directory name will come from the command line, not the parameter file.
  *
+ * The command-line options are as follows.
+ *
+ * -h	display command-line usage
+ * -t	model type (REGRESSION or CLASS)
+ *
+ * --saveAll	if specified, each model will be saved to a different file, with the name "modelXX.ser", where
+ * 				XX is the iteration number
+ *
  * @author Bruce Parrello
  *
  */
@@ -56,6 +64,11 @@ public class SearchProcessor implements ICommand {
     @Option(name="--type", aliases={"-t"}, usage="type of model")
     private TrainingProcessor.Type modelType;
 
+    /** if specified, all models will be saved */
+    @Option(name = "--saveAll", usage = "save all models")
+    private boolean saveAll;
+
+    /** parameter file */
     @Argument(index=0, metaVar="parms.prm", usage="parameter file with tab-separated alternatives", required=true)
     private File parmFile;
 
@@ -71,6 +84,7 @@ public class SearchProcessor implements ICommand {
         CmdLineParser parser = new CmdLineParser(this);
         try {
             this.help = false;
+            this.saveAll = false;
             this.modelType = TrainingProcessor.Type.CLASS;
             parser.parseArgument(args);
             if (this.help) {
@@ -99,7 +113,7 @@ public class SearchProcessor implements ICommand {
     public void run() {
         // We loop through the parameter combinations, calling the training processor.
         TrainingProcessor processor = TrainingProcessor.create(modelType);
-        // Suppress saving of the model.
+        // Suppress saving of the model unless we force it.
         processor.setSearchMode();
         // These variables track our progress and success.
         int iteration = 1;
@@ -115,6 +129,17 @@ public class SearchProcessor implements ICommand {
         while (this.parmIterator.hasNext()) {
             // Create the parameter array.
             List<String> theseParms = this.parmIterator.next();
+            // If we are saving all models, we must add or replace the model name.
+            if (this.saveAll) {
+                int mPos = theseParms.indexOf("--name");
+                if (mPos < 0) {
+                    mPos = theseParms.size();
+                    theseParms.add("--name");
+                    theseParms.add("");
+                }
+                File modelFile = new File(this.modelDir, String.format("model%d.ser", iteration));
+                theseParms.set(mPos+1, modelFile.toString());
+            }
             // Save the values.
             String[] values = new String[varMap.size() + 1];
             for (int i = 0; i < headings.length; i++)
@@ -131,15 +156,18 @@ public class SearchProcessor implements ICommand {
                 double newRating = processor.getRating();
                 values[varMap.size()] = String.format("%12.4f", newRating);
                 // Compare the rating.
+                boolean save = this.saveAll;
                 if (newRating > bestRating) {
                     // Here this is our best model.  Remember that and save the model to disk.
                     bestIteration = iteration;
                     bestRating = newRating;
-                    processor.saveModelForced();
+                    save = true;
                     log.info("** Best iteration so far.");
                 } else {
                     log.info("** Best iteration was {} with rating {}.", bestIteration, bestRating);
                 }
+                if (save)
+                    processor.saveModelForced();
                 // Save this row of the summary array.
                 data.add(values);
             } catch (Exception e) {

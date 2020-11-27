@@ -159,6 +159,21 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
     }
 
     /**
+     * Construct a training/testing dataset reader for a string list.
+     *
+     * @param strings	the list of strings containing the headers and the data rows
+     * @param labelCol	the name or index of the column containing the label
+     * @param labels	a list of the acceptable labels, in order
+     * @param metaCols	a list of metadata column names and/or indexes; these columns are ignored
+     *
+     * @throws IOException
+     */
+    public TabbedDataSetReader(List<String> strings, String labelCol, List<String> labels, List<String> metaCols) throws IOException {
+        this.reader = new TabbedLineReader(strings);
+        this.setup(labelCol, labels, metaCols);
+    }
+
+    /**
      * Initialize the fields of this object.
      *
      * @param labelCol	the name or index of the column containing the label
@@ -422,11 +437,11 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
         return retVal;
     }
 
-	/**
-	 * @return the buffer
-	 */
-	public ArrayList<Entry> getBuffer() {
-		return buffer;
-	}
+    /**
+     * @return the buffer
+     */
+    public ArrayList<Entry> getBuffer() {
+        return buffer;
+    }
 
 }

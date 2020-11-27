@@ -14,6 +14,7 @@ import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
+import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.utils.ICommand;
 
 /**
@@ -51,7 +52,8 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 if (! this.modelDir.isDirectory()) {
                     throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 } else {
-                    this.setupTraining(labelCol);
+                    TabbedDataSetReader myReader = this.openReader(this.trainingFile, this.labelCol);
+                    this.setupTraining(myReader, labelCol);
                     // Read in the testing set.
                     readTestingSet();
                 }

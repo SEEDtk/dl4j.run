@@ -135,6 +135,23 @@ public class ChannelDataSetReader extends TabbedDataSetReader {
     }
 
     /**
+     * Construct a training/testing dataset reader for a list of strings.
+     *
+     * @param strings	the list of strings including the header and the data rows
+     * @param labelCol	the name or index of the column containing the label
+     * @param labels	a list of the acceptable labels, in order
+     * @param metaCols	a list of metadata column names and/or indexes; these columns are ignored
+     * @param dict		mapping from input strings to output vectors
+     * @throws IOException
+     */
+    public ChannelDataSetReader(List<String> strings, String labelCol, List<String> labels, List<String> metaCols,
+            Map<String, double[]> dict)
+            throws IOException {
+        super(strings, labelCol, labels, metaCols);
+        setDictionary(dict);
+    }
+
+    /**
      * Store the channel dictionary for this reader.
      *
      * @param dict	hash mapping input strings to channel vectors

@@ -134,7 +134,7 @@ public class LearningProcessor {
     /**
      * Set the defaults and perform initialization for the parameters.
      */
-    protected void setDefaults() {
+    public void setDefaults() {
         this.help = false;
         this.iterations = 1000;
         this.batchSize = 500;
@@ -184,6 +184,14 @@ public class LearningProcessor {
             ModelSerializer.writeModel(results.getBestModel(), this.modelName, true, normalizer);
         }
     }
+
+    /**
+     * @return the best model found during training
+     */
+    public MultiLayerNetwork getBestModel() {
+        return this.results.getBestModel();
+    }
+
 
     /**
      * Write the accuracy report.
@@ -411,30 +419,74 @@ public class LearningProcessor {
     /**
      * Initialize the reader for reading a training set.
      *
+     * @param myReader  reader containing the training/testing data.
+     *
      * @oaram labelCol	column specifier for the label column, or NULL if there is none
-     * @param metaList	list of metadata columns
      *
      * @throws IOException
      */
-    public void initializeReader(String labelCol) throws IOException {
+    public void initializeReader(TabbedDataSetReader myReader, String labelCol) throws IOException {
         // Determine the input type and get the appropriate reader.
         File channelFile = new File(this.modelDir, "channels.tbl");
         this.channelMode = channelFile.exists();
-        if (! this.channelMode) {
-            log.info("Normal input.");
-            // Normal situation.  Read scalar values.
-            this.reader = new TabbedDataSetReader(this.trainingFile, labelCol, this.getLabels(), this.metaList);
-        } else {
-            // Here we have channel input.
-            Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
-            ChannelDataSetReader myReader = new ChannelDataSetReader(this.trainingFile, labelCol,
-                    this.getLabels(), this.metaList, channelMap);
-            this.channelCount = myReader.getChannels();
-            this.reader = myReader;
-            log.info("Channel input with {} channels.", this.getChannelCount());
-        }
+        this.reader = myReader;
     }
 
+    /**
+     * Initialize a reader for reading a training/testing set.
+     *
+     * @param inFile	file containing training/testing set
+     * @param labelCol	column specifier for label column, or NULL if there is none
+     *
+     * @throws IOException
+     */
+    public TabbedDataSetReader openReader(File inFile, String labelCol) throws IOException {
+        TabbedDataSetReader retVal;
+        // Determine the input type and get the appropriate reader.
+        if (! this.channelMode) {
+            log.info("Normal input from {}.", inFile);
+            // Normal situation.  Read scalar values.
+            retVal = new TabbedDataSetReader(inFile, labelCol, this.getLabels(), this.metaList);
+            this.channelCount = 1;
+        } else {
+            // Here we have channel input.
+            File channelFile = new File(this.modelDir, "channels.tbl");
+            Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+            ChannelDataSetReader myReader = new ChannelDataSetReader(inFile, labelCol,
+                    this.getLabels(), this.metaList, channelMap);
+            this.channelCount = myReader.getChannels();
+            retVal = myReader;
+            log.info("Channel input with {} channels from {}.", this.getChannelCount(), inFile);
+        }
+        return retVal;
+    }
+
+    /**
+     * @return a reader for reading a training/testing set from a list of in-memory strings.
+     *
+     * @param strings		in-memory list of strings (including the header line)
+     * @param labelCol		column specifier for label column, or NULL if there is none
+     *
+     * @throws IOException
+     */
+    public TabbedDataSetReader openReader(List<String> strings, String labelCol) throws IOException {
+        TabbedDataSetReader retVal;
+        // Determine the input type and get the appropriate reader.
+        if (! this.channelMode) {
+            // Normal situation.  Read scalar values.
+            retVal = new TabbedDataSetReader(strings, labelCol, this.getLabels(), this.metaList);
+            this.channelCount = 1;
+        } else {
+            // Here we have channel input.
+            File channelFile = new File(this.modelDir, "channels.tbl");
+            Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+            ChannelDataSetReader myReader = new ChannelDataSetReader(strings, labelCol,
+                    this.getLabels(), this.metaList, channelMap);
+            this.channelCount = myReader.getChannels();
+            retVal = myReader;
+        }
+        return retVal;
+    }
     /**
      * Read in the testing set.
      */
@@ -453,12 +505,13 @@ public class LearningProcessor {
     /**
      * Set up the training file for processing.
      *
+     * @param myReader	reader containing the data to use for training
      * @oaram labelCol	column specifier for the label column, or NULL if there is none
      *
      * @throws FileNotFoundException
      * @throws IOException
      */
-    public void setupTraining(String labelCol) throws FileNotFoundException, IOException {
+    public void setupTraining(TabbedDataSetReader myReader, String labelCol) throws FileNotFoundException, IOException {
         if (! this.modelDir.isDirectory()) {
             throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
         } else {
@@ -476,7 +529,7 @@ public class LearningProcessor {
                 if (! this.trainingFile.exists())
                     throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
             }
-            initializeReader(labelCol);
+            initializeReader(myReader, labelCol);
         }
     }
 
@@ -523,6 +576,15 @@ public class LearningProcessor {
      */
     protected String getTrialName() {
         return this.trialName;
+    }
+
+    /**
+     * Specify the comment string for reports.
+     *
+     * @param comment 	the comment to set
+     */
+    public void setComment(String comment) {
+        this.comment = comment;
     }
 
 }

@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -34,6 +35,7 @@ import org.theseed.dl4j.CnnToRnnSequencePreprocessor;
 import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.Regularization;
 import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
+import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.utils.FloatList;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.IntegerList;
@@ -185,7 +187,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     /**
      * Set the parameter defaults related to model creation.
      */
-    protected void setModelDefaults() {
+    public void setModelDefaults() {
         this.parmFile = null;
         this.denseLayers = new IntegerList();
         this.regFactor = 0.3;
@@ -296,6 +298,11 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     *
     * @throws IOException */
     protected abstract void writeParms(File outFile) throws IOException;
+
+    /**
+     * Set the defaults peculiar to the subclass.
+     */
+    public abstract void setSubclassDefaults();
 
     /**
      * Write the model-related parameters to a configuration file.
@@ -619,9 +626,12 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      *
      * @param model		model to test
      * @param file		training file with which to test the model
+     *
      * @return an estimate of the prediction error
+     *
+     * @throws IOException
      */
-    public double testPredictions(MultiLayerNetwork model, File trainingFile) {
+    public double testPredictions(MultiLayerNetwork model, List<String> trainingFile) throws IOException {
         Iterable<DataSet> batches = this.openDataFile(trainingFile);
         IPredictError errorPredictor = this.initializePredictError(this.getLabels());
         for (DataSet batch : batches) {
@@ -632,6 +642,27 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         return errorPredictor.getError();
     }
 
+    /**
+     * Initialize for training.
+     *
+     * @throws IOException
+     */
+    protected void initializeTraining() throws IOException {
+        // Read in the testing set.
+        readTestingSet();
+        // Set up the common parameters.
+        initializeModelParameters();
+    }
+
+    /**
+     * Configure the model for training.  This includes parsing the header of the training/testing file,
+     * reading the testing set, and initializing the model parameters.
+     *
+     * @param	reader for the testing/training data
+     *
+     * @throws IOException
+     */
+    public abstract void configureTraining(TabbedDataSetReader myReader) throws IOException;
 
     /**
      * Initialize a prediction error object for this trainer.
@@ -645,10 +676,68 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     /**
      * Open a dataset iterator for the specified training file.
      *
-     * @param trainingFile	file containing a training set
+     * @param strings	list of strings containing a training/testing set
      *
      * @return an Iterable for dataset batches in the training file
+     *
+     * @throws IOException
      */
-    protected abstract Iterable<DataSet> openDataFile(File trainingFile);
+    protected abstract Iterable<DataSet> openDataFile(List<String> trainingFile) throws IOException;
+
+    /**
+     * Create the run statistics for this training process.
+     */
+    protected abstract RunStats createRunStats(MultiLayerNetwork model, Trainer trainer);
+
+    /**
+     * Compute the evaluation report for this training process.
+     *
+     * @param bestModel		best model from the training
+     * @param output		buffer to which the report is to be appended
+     * @param runStats		run statistics from the training
+     */
+    protected abstract void report(MultiLayerNetwork bestModel, TextStringBuilder output, RunStats runStats);
+
+    @Override
+    public void run() {
+        try {
+            // Create the model.
+            MultiLayerNetwork model = buildModel();
+            // Train the model.
+            Trainer trainer = Trainer.create(this.method, this, log);
+            RunStats runStats = this.createRunStats(model, trainer);
+            this.trainModel(model, runStats, trainer);
+            this.saveModel();
+            // Display the configuration.
+            MultiLayerNetwork bestModel = runStats.getBestModel();
+            TextStringBuilder parms = displayModel(runStats);
+            if (runStats.getSaveCount() == 0) {
+                parms.appendNewLine();
+                parms.appendln("MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
+                this.clearRating();
+            } else {
+                this.report(bestModel, parms, runStats);
+            }
+            // Add the summary.
+            parms.appendln(bestModel.summary(getInputShape()));
+            // Add the parameter dump.
+            parms.append(this.dumpModel(bestModel));
+            // Output the result.
+            String report = parms.toString();
+            log.info(report);
+            RunStats.writeTrialReport(this.getTrialFile(), this.comment, report);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * @return a data set reader for the specified string list
+     *
+     * @param strings	string list to use for training and testing
+     *
+     * @throws IOException
+     */
+    public abstract TabbedDataSetReader openReader(List<String> strings) throws IOException;
 
 }

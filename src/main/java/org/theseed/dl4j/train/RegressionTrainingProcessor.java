@@ -6,7 +6,6 @@ package org.theseed.dl4j.train;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -22,6 +21,7 @@ import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.theseed.dl4j.RegressionStatistics;
+import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.utils.ICommand;
 
 /**
@@ -158,8 +158,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     public boolean parseCommand(String[] args) {
         boolean retVal = false;
         // Set the defaults.
-        this.prefer = RunStats.RegressionType.SCORE;
-        this.bound = 0.5;
+        setSubclassDefaults();
         this.setDefaults();
         this.setModelDefaults();
         // Parse the command line.
@@ -170,13 +169,9 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
                 parser.printUsage(System.err);
             } else {
                 // Verify the model directory and read the labels.
-                setupTraining(null);
-                // Configure the input for regression.
-                this.reader.setRegressionColumns();
-                // Read in the testing set.
-                readTestingSet();
-                // Set up the common parameters.
-                initializeModelParameters();
+                TabbedDataSetReader myReader = this.openReader(this.trainingFile, null);
+                // Initialize the testing set and set up the columns.
+                configureTraining(myReader);
                 // We made it this far, we can run the application.
                 retVal = true;
             }
@@ -191,36 +186,18 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     }
 
     @Override
-    public void run() {
-        try {
-            // Create the model.
-            MultiLayerNetwork model = buildModel();
-            // Train the model.
-            Trainer trainer = Trainer.create(this.method, this, log);
-            RunStats runStats = RunStats.createR(model, prefer, trainer, this);
-            this.trainModel(model, runStats, trainer);
-            this.saveModel();
-            // Display the configuration.
-            MultiLayerNetwork bestModel = runStats.getBestModel();
-            TextStringBuilder parms = displayModel(runStats);
-            if (runStats.getSaveCount() == 0) {
-                parms.appendNewLine();
-                parms.appendln("MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
-                this.clearRating();
-            } else {
-                this.regressionReport(bestModel, parms, runStats);
-            }
-            // Add the summary.
-            parms.appendln(bestModel.summary(getInputShape()));
-            // Add the parameter dump.
-            parms.append(this.dumpModel(bestModel));
-            // Output the result.
-            String report = parms.toString();
-            log.info(report);
-            RunStats.writeTrialReport(this.getTrialFile(), this.comment, report);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+    public void setSubclassDefaults() {
+        this.prefer = RunStats.RegressionType.SCORE;
+        this.bound = 0.5;
+    }
+
+    @Override
+    public void configureTraining(TabbedDataSetReader myReader) throws IOException {
+        setupTraining(myReader, null);
+        // Configure the input for regression.
+        this.reader.setRegressionColumns();
+        // Setup for training.
+        this.initializeTraining();
     }
 
     /**
@@ -291,14 +268,28 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
 
     @Override
     protected IPredictError initializePredictError(List<String> labels) {
-        // TODO code for initializePredictError
-        return null;
+        return new RegressionPredictError(labels);
     }
 
     @Override
-    protected Iterable<DataSet> openDataFile(File trainingFile) {
-        // TODO code for openDataFile
-        return null;
+    protected Iterable<DataSet> openDataFile(List<String> strings) throws IOException {
+        return this.openReader(strings, null);
+    }
+
+    @Override
+    protected RunStats createRunStats(MultiLayerNetwork model, Trainer trainer) {
+        return RunStats.createR(model, this.prefer, trainer, this);
+    }
+
+    @Override
+    protected void report(MultiLayerNetwork bestModel, TextStringBuilder output, RunStats runStats) {
+        this.regressionReport(bestModel, output, runStats);
+
+    }
+
+    @Override
+    public TabbedDataSetReader openReader(List<String> strings) throws IOException {
+        return this.openReader(strings, null);
     }
 
 }

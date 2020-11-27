@@ -64,12 +64,16 @@ public class App
                 runObject = new RegressionTrainingProcessor();
                 success = execute(runObject, args);
                 break;
-            case "predict" :
-                runObject = new PredictionProcessor();
-                success = execute(runObject, args);
-                break;
             case "search" :
                 runObject = new SearchProcessor();
+                success = execute(runObject, args);
+                break;
+            case "rvalidate" :
+                runObject = new CrossValidateProcessor();
+                success = execute(runObject, args);
+                break;
+            case "predict" :
+                runObject = new PredictionProcessor();
                 success = execute(runObject, args);
                 break;
             case "improve" :
@@ -83,31 +87,7 @@ public class App
             case "--help" :
             case "-h" :
             case "help" :
-                args = new String[] { "--help" };
-                System.err.println("Command code \"train\":");
-                runObject = new ClassTrainingProcessor();
-                execute(runObject, args);
-                System.err.println();
-                System.err.println("Command code \"rtrain\":");
-                runObject = new RegressionTrainingProcessor();
-                execute(runObject, args);
-                System.err.println();
-                System.err.println("Command code \"predict\":");
-                runObject = new PredictionProcessor();
-                execute(runObject, args);
-                System.err.println();
-                System.err.println("Command code \"search\":");
-                runObject = new SearchProcessor();
-                execute(runObject, args);
-                System.err.println();
-                System.err.println("Command code \"improve\":");
-                runObject = new ImproveProcessor();
-                execute(runObject, args);
-                System.err.println();
-                System.err.println("Command code \"multirun\":");
-                runObject = new MultiRunProcessor();
-                execute(runObject, args);
-                System.err.println();
+                showHelp();
                 break;
             default :
                 throw new IllegalArgumentException("Invalid command code " + command[0] + ".");
@@ -119,6 +99,21 @@ public class App
         }
         // Force cleanup.
         System.exit(exitCode);
+    }
+
+    /**
+     * Display all the commands.
+     */
+    public static void showHelp() {
+        System.out.println("Available commands:");
+        System.out.println();
+        System.out.println("train        train a classification model");
+        System.out.println("rtrain       train a regression model");
+        System.out.println("search       train models with multiple different hyper-parameters");
+        System.out.println("rvalidate    cross-validate a regression model training set");
+        System.out.println("predict      use a trained model to make predictions");
+        System.out.println("improve      train an existing model with new data to improve it");
+        System.out.println("multirun     use multiple trained models to make predictions");
     }
 
     /**

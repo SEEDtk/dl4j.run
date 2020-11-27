@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -19,6 +20,8 @@ import org.kohsuke.args4j.Option;
 import org.nd4j.evaluation.regression.RegressionEvaluation;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.dataset.DataSet;
+import org.theseed.dl4j.RegressionStatistics;
 import org.theseed.utils.ICommand;
 
 /**
@@ -231,7 +234,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
         // Evaluate the model.
         RegressionEvaluation eval = runStats.scoreModel(model, getTestingSet(), getLabels());
         // Write the header.
-        buffer.appendln("%n%-21s %11s %11s %11s %11s %11s %11s %11s %11s", "label", "MAE", "MSE", "Pearson's", "R Squared", "Pseudo-Acc", "Round-Acc", "Closeness", "Outlie Lim");
+        buffer.appendln("%n%-21s %11s %11s %11s %11s %11s %11s %11s %11s", "label", "MAE", "MSE", "Pearson's", "R-Squared", "Pseudo-Acc", "Round-Acc", "inner_MAE", "IQR");
         buffer.appendln(StringUtils.repeat('-', 117));
         // We need the output and the testing set labels for the pseudo-accuracy.
         INDArray output = runStats.getOutput();
@@ -239,12 +242,8 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
         // Write the stats for each column.
         for (int i = 0; i < this.getLabels().size(); i++) {
             String label = this.getLabels().get(i);
-            // These are used to compute the outliers.
-            double mean = eval.meanAbsoluteError(i);
-            double sDev = Math.sqrt((eval.meanSquaredError(i) - mean * mean) / this.testSize);
-            double maxError = mean + 2 * sDev;
-            double sumCleanError = 0.0;
-            int outliers = 0;
+            // These are used to compute the quartile-related stats.
+            RegressionStatistics rStats = new RegressionStatistics(this.testSize);
             // These will track the pseudo-accuracies.
             int goodCount = 0;
             int closeCount = 0;
@@ -252,25 +251,19 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
             for (int r = 0; r < this.testSize; r++) {
                 double e = expect.getDouble(r, i);
                 double o = output.getDouble(r, i);
-                double err = Math.abs(e - o);
-                if (err <= maxError) {
-                    sumCleanError += err;
-                } else {
-                    outliers++;
-                }
+                rStats.add(e, o);
                 boolean eDiff = (e >= this.bound);
                 boolean oDiff = (o >= this.bound);
                 if (eDiff == oDiff) goodCount++;
                 if (Math.round(o) == e) closeCount++;
             }
+            rStats.finish();
             String accuracy = LearningProcessor.formatRatio(goodCount, this.testSize);
             String boundAcc = LearningProcessor.formatRatio(closeCount, this.testSize);
             // Now we compute the clean average error.
-            String closeness = LearningProcessor.formatRatio(sumCleanError * (this.testSize + outliers),
-                    this.testSize * this.testSize);
-            buffer.appendln("%-21s %11.4f %11.4f %11.4f %11.4f %11s %11s %11s %11.4f", label, eval.meanAbsoluteError(i),
+            buffer.appendln("%-21s %11.4f %11.4f %11.4f %11.4f %11s %11s %11.4f %11.4f", label, eval.meanAbsoluteError(i),
                     eval.meanSquaredError(i), eval.pearsonCorrelation(i), eval.rSquared(i), accuracy, boundAcc,
-                    closeness, maxError);
+                    rStats.trimmedMean(0.2), rStats.iqr());
         }
         if (this.getLabels().size() > 1) {
             // Write the average stats.
@@ -294,6 +287,18 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
      */
     public double getBound() {
         return bound;
+    }
+
+    @Override
+    protected IPredictError initializePredictError(List<String> labels) {
+        // TODO code for initializePredictError
+        return null;
+    }
+
+    @Override
+    protected Iterable<DataSet> openDataFile(File trainingFile) {
+        // TODO code for openDataFile
+        return null;
     }
 
 }

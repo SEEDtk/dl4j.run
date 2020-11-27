@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -16,6 +17,7 @@ import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.activations.Activation;
+import org.nd4j.linalg.dataset.DataSet;
 import org.theseed.utils.ICommand;
 
 /**
@@ -237,6 +239,21 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     @Override
     protected Activation getOutActivation() {
         return this.getLossFunction().getOutActivation(Activation.SOFTMAX);
+    }
+
+
+    @Override
+    protected IPredictError initializePredictError(List<String> labels) {
+        // TODO code for initializePredictError
+        return null;
+    }
+
+
+    @Override
+    protected Iterable<DataSet> openDataFile(File trainingFile) {
+
+        // TODO code for openDataFile
+        return null;
     }
 
 }

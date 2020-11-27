@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -25,6 +26,7 @@ import org.deeplearning4j.nn.weights.WeightInit;
 import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
 import org.nd4j.linalg.lossfunctions.ILossFunction;
@@ -611,5 +613,42 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         this.modelName = file;
         saveModelForced();
     }
+
+    /**
+     * Test a model against a full training file.
+     *
+     * @param model		model to test
+     * @param file		training file with which to test the model
+     * @return an estimate of the prediction error
+     */
+    public double testPredictions(MultiLayerNetwork model, File trainingFile) {
+        Iterable<DataSet> batches = this.openDataFile(trainingFile);
+        IPredictError errorPredictor = this.initializePredictError(this.getLabels());
+        for (DataSet batch : batches) {
+            INDArray output = model.output(batch.getFeatures());
+            errorPredictor.accumulate(batch.getLabels(), output);
+        }
+        errorPredictor.finish();
+        return errorPredictor.getError();
+    }
+
+
+    /**
+     * Initialize a prediction error object for this trainer.
+     *
+     * @param labels	labels for this model
+     *
+     * @return an object that can be used to compute prediction error
+     */
+    protected abstract IPredictError initializePredictError(List<String> labels);
+
+    /**
+     * Open a dataset iterator for the specified training file.
+     *
+     * @param trainingFile	file containing a training set
+     *
+     * @return an Iterable for dataset batches in the training file
+     */
+    protected abstract Iterable<DataSet> openDataFile(File trainingFile);
 
 }

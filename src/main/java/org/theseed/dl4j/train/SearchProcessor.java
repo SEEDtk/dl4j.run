@@ -127,26 +127,19 @@ public class SearchProcessor implements ICommand {
         // This is a buffer to hold the parameters.
         String[] parmBuffer = new String[this.parmIterator.size() + 3];
         while (this.parmIterator.hasNext()) {
-            // Create the parameter array.
-            List<String> theseParms = this.parmIterator.next();
             // If we are saving all models, we must add or replace the model name.
             if (this.saveAll) {
-                int mPos = theseParms.indexOf("--name");
-                if (mPos < 0) {
-                    mPos = theseParms.size();
-                    theseParms.add("--name");
-                    theseParms.add("");
-                }
                 File modelFile = new File(this.modelDir, String.format("model%d.ser", iteration));
-                theseParms.set(mPos+1, modelFile.toString());
+                this.parmIterator.replace("--name", modelFile.toString());
             }
-            // Save the values.
+            // Update the comment and create the parameter array.
+            this.parmIterator.replace("--comment", String.format("Iteration %d: %s", iteration, this.parmIterator));
+            List<String> theseParms = this.parmIterator.next();
+            // Save the varying values.
             String[] values = new String[varMap.size() + 1];
             for (int i = 0; i < headings.length; i++)
                 values[i] = varMap.get(headings[i]);
-            // Add the comment and the model directory.
-            theseParms.add("--comment");
-            theseParms.add(String.format("Iteration %d: %s", iteration, this.parmIterator));
+            // Add the model directory to the parameters.
             theseParms.add(this.modelDir.getPath());
             // Run the experiment.
             String[] actualParms = theseParms.toArray(parmBuffer);

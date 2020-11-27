@@ -46,6 +46,8 @@ public class LearningProcessor {
     private DataNormalization normalizer;
     /** training results */
     private RunStats results;
+    /** list of metadata column names */
+    private List<String> metaList;
 
 
     /** logging facility */
@@ -414,19 +416,19 @@ public class LearningProcessor {
      *
      * @throws IOException
      */
-    public void initializeReader(String labelCol, List<String> metaList) throws IOException {
+    public void initializeReader(String labelCol) throws IOException {
         // Determine the input type and get the appropriate reader.
         File channelFile = new File(this.modelDir, "channels.tbl");
         this.channelMode = channelFile.exists();
         if (! this.channelMode) {
             log.info("Normal input.");
             // Normal situation.  Read scalar values.
-            this.reader = new TabbedDataSetReader(this.trainingFile, labelCol, this.getLabels(), metaList);
+            this.reader = new TabbedDataSetReader(this.trainingFile, labelCol, this.getLabels(), this.metaList);
         } else {
             // Here we have channel input.
             Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
             ChannelDataSetReader myReader = new ChannelDataSetReader(this.trainingFile, labelCol,
-                    this.getLabels(), metaList, channelMap);
+                    this.getLabels(), this.metaList, channelMap);
             this.channelCount = myReader.getChannels();
             this.reader = myReader;
             log.info("Channel input with {} channels.", this.getChannelCount());
@@ -467,14 +469,14 @@ public class LearningProcessor {
             this.setLabels(TabbedDataSetReader.readLabels(labelFile));
             log.info("{} labels read from label file.", this.getLabels().size());
             // Parse the metadata column list.
-            List<String> metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
+            this.metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
             // Finally, we initialize the input to get the label and metadata columns handled.
             if (this.trainingFile == null) {
                 this.trainingFile = new File(this.modelDir, "training.tbl");
                 if (! this.trainingFile.exists())
                     throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
             }
-            initializeReader(labelCol, metaList);
+            initializeReader(labelCol);
         }
     }
 

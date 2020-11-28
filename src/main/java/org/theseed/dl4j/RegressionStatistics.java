@@ -139,4 +139,14 @@ public class RegressionStatistics {
         return sum / count;
     }
 
+    /**
+     * Scale the errors by dividing the specified factor into them.
+     *
+     * @param scaleFactor	factor to divide into each error value
+     */
+    public void scale(double scaleFactor) {
+        for (int i = 0; i < this.errors.length; i++)
+            this.errors[i] /= scaleFactor;
+    }
+
 }

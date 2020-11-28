@@ -511,7 +511,7 @@ public class LearningProcessor {
      * @throws FileNotFoundException
      * @throws IOException
      */
-    public void setupTraining(TabbedDataSetReader myReader, String labelCol) throws FileNotFoundException, IOException {
+    public void setupTraining(String labelCol) throws FileNotFoundException, IOException {
         if (! this.modelDir.isDirectory()) {
             throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
         } else {
@@ -529,7 +529,6 @@ public class LearningProcessor {
                 if (! this.trainingFile.exists())
                     throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
             }
-            initializeReader(myReader, labelCol);
         }
     }
 

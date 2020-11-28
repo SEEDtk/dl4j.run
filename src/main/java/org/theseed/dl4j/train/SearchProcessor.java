@@ -124,8 +124,6 @@ public class SearchProcessor implements ICommand {
         String[] headings = ArrayUtils.insert(varMap.size(), this.parmIterator.getOptions(), "    Rating");
         ArrayList<String[]> data = new ArrayList<String[]>();
         data.add(headings);
-        // This is a buffer to hold the parameters.
-        String[] parmBuffer = new String[this.parmIterator.size() + 3];
         while (this.parmIterator.hasNext()) {
             // If we are saving all models, we must add or replace the model name.
             if (this.saveAll) {
@@ -142,6 +140,8 @@ public class SearchProcessor implements ICommand {
             // Add the model directory to the parameters.
             theseParms.add(this.modelDir.getPath());
             // Run the experiment.
+            // This is a buffer to hold the parameters.
+            String[] parmBuffer = new String[this.parmIterator.size()];
             String[] actualParms = theseParms.toArray(parmBuffer);
             try {
                 App.execute(processor, actualParms);

@@ -17,17 +17,34 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 public class ClassPredictError implements IPredictError {
 
     // FIELDS
-    /** number of incorrect predictions */
-    private int errors;
     /** total number of predictions */
     private int rows;
     /** number of labels */
     private int cols;
+    /** number of true positives */
+    private int truePositive;
+    /** number of true negatives */
+    private int trueNegative;
+    /** number of false negatives */
+    private int falseNegative;
+    /** number of wrong positives */
+    private int wrongPositive;
+    /** accuracy */
+    private double accuracy;
+    /** precision */
+    private double sensitivity;
+    /** sensitivity */
+    private double specificity;
+    /** fuzziness */
+    private double fuzziness;
 
     public ClassPredictError(List<String> labels) {
-        this.errors = 0;
         this.rows = 0;
         this.cols = labels.size();
+        this.truePositive = 0;
+        this.trueNegative = 0;
+        this.falseNegative = 0;
+        this.wrongPositive = 0;
     }
 
     @Override
@@ -36,8 +53,15 @@ public class ClassPredictError implements IPredictError {
         for (int r = 0; r < expect.rows(); r++) {
             int expected = computeBest(expect, r);
             int predicted = computeBest(output, r);
-            if (expected != predicted)
-                this.errors++;
+            if (expected != predicted) {
+                if (expected == 0)
+                    this.falseNegative++;
+                else if (predicted > 0)
+                    this.wrongPositive++;
+            } else if (expected == 0)
+                this.trueNegative++;
+            else
+                this.truePositive++;
             this.rows++;
         }
     }
@@ -65,14 +89,37 @@ public class ClassPredictError implements IPredictError {
 
     @Override
     public double getError() {
-        double retVal = 0.0;
-        if (this.errors > 0)
-            retVal = ((double) this.errors) / this.rows;
-        return retVal;
+        return (1.0 - accuracy);
     }
 
     @Override
     public void finish() {
+        this.accuracy = 0.0;
+        this.sensitivity = 0.0;
+        int good = this.trueNegative + this.truePositive;
+        if (good > 0) {
+            this.accuracy = good / (double) this.rows;
+            // Sensitivity is the  number of correct positives over the total number of expected positives.  It
+            // indicates how good we are at correctly guessing positives.
+            this.sensitivity = good / (double) (this.truePositive + this.falseNegative + this.wrongPositive);
+            // Specificity is the  number of negatives over the total number of expected negatives.  It indicates
+            // how good we are at correctly guessing negatives.
+            this.specificity = this.trueNegative / (double) (this.falseNegative + this.trueNegative);
+            // Fuzziness is the number of wrong positives over the total number of positives that were guessed
+            // positive. It indicates how often we guess the wrong condition.
+            this.fuzziness = this.wrongPositive / (double) (this.wrongPositive + this.truePositive);
+        }
+
+    }
+
+    @Override
+    public String[] getTitles() {
+        return new String[] { "Sensitivity", "Specificity", "Fuzziness" };
+    }
+
+    @Override
+    public double[] getStats() {
+        return new double[] { this.sensitivity, this.specificity, this.fuzziness };
     }
 
 }

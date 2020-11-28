@@ -13,6 +13,7 @@ import org.theseed.dl4j.train.ImproveProcessor;
 import org.theseed.dl4j.train.RegressionTrainingProcessor;
 import org.theseed.dl4j.train.SearchProcessor;
 import org.theseed.dl4j.train.ClassTrainingProcessor;
+import org.theseed.dl4j.train.CrossValidateProcessor;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
 
@@ -68,7 +69,7 @@ public class App
                 runObject = new SearchProcessor();
                 success = execute(runObject, args);
                 break;
-            case "rvalidate" :
+            case "xvalidate" :
                 runObject = new CrossValidateProcessor();
                 success = execute(runObject, args);
                 break;

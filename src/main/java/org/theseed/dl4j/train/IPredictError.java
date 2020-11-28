@@ -32,5 +32,14 @@ public interface IPredictError {
      */
     void finish();
 
+    /**
+     * Get titles for the auxiliary accuracy statistics.
+     */
+    String[] getTitles();
+
+    /**
+     * Get the values for the auxiliary accuracy statistics.
+     */
+    double[] getStats();
 
 }

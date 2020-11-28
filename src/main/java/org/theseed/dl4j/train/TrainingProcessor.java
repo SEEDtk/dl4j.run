@@ -631,15 +631,15 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      *
      * @throws IOException
      */
-    public double testPredictions(MultiLayerNetwork model, List<String> trainingFile) throws IOException {
+    public IPredictError testPredictions(MultiLayerNetwork model, List<String> trainingFile) throws IOException {
         Iterable<DataSet> batches = this.openDataFile(trainingFile);
-        IPredictError errorPredictor = this.initializePredictError(this.getLabels());
+        IPredictError errorPredictor = this.initializePredictError(this.getLabels(), trainingFile.size() - 1);
         for (DataSet batch : batches) {
             INDArray output = model.output(batch.getFeatures());
             errorPredictor.accumulate(batch.getLabels(), output);
         }
         errorPredictor.finish();
-        return errorPredictor.getError();
+        return errorPredictor;
     }
 
     /**
@@ -668,10 +668,11 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      * Initialize a prediction error object for this trainer.
      *
      * @param labels	labels for this model
+     * @param rows		number of data rows to be predicted
      *
      * @return an object that can be used to compute prediction error
      */
-    protected abstract IPredictError initializePredictError(List<String> labels);
+    protected abstract IPredictError initializePredictError(List<String> labels, int rows);
 
     /**
      * Open a dataset iterator for the specified training file.
@@ -739,5 +740,22 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      * @throws IOException
      */
     public abstract TabbedDataSetReader openReader(List<String> strings) throws IOException;
+
+    /**
+     * Parse the parameters in the specified array.  This has to be done using a subclass override, because
+     * the parameter parser requires that it be called from a class that has all the parameters accessible.
+     *
+     * @param theseParms	array of parameters
+     *
+     * @return TRUE if successful, FALSE if the command should be aborted
+     */
+    public abstract boolean parseArgs(String[] theseParms);
+
+    /**
+     * Setup the label and metadata columns.
+     *
+     * @throws IOException
+     */
+    public abstract void setupTraining() throws IOException;
 
 }

@@ -1,12 +1,14 @@
 /**
  *
  */
-package org.theseed.dl4j;
+package org.theseed.dl4j.train;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
@@ -17,8 +19,8 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.dl4j.train.RunStats;
-import org.theseed.dl4j.train.TrainingProcessor;
+import org.theseed.dl4j.RegressionStatistics;
+import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.LineReader;
 import org.theseed.io.Shuffler;
 import org.theseed.utils.ICommand;
@@ -62,6 +64,8 @@ public class CrossValidateProcessor implements ICommand {
     private Parms parms;
     /** array of fold errors */
     private double[] foldErrors;
+    /** array of fold statistics */
+    private double[][] foldStats;
 
     // COMMAND-LINE OPTIONS
 
@@ -112,7 +116,7 @@ public class CrossValidateProcessor implements ICommand {
                     // Extract the training file.
                     String trainingName = this.parms.getValue("--training");
                     File trainingFile;
-                    if (trainingName == null)
+                    if (trainingName.isEmpty())
                         trainingFile = new File(this.modelDir, "training.tbl");
                     else
                         trainingFile = new File(trainingName);
@@ -149,7 +153,9 @@ public class CrossValidateProcessor implements ICommand {
             // Denote we have no best result yet.
             this.bestIdx = 1;
             this.bestError = Double.MAX_VALUE;
-            this.foldErrors = new double[this.foldK];
+            // Set up the error tracking.  Note that we have an extra slot in the array because we start at position 1.
+            this.foldErrors = new double[this.foldK + 1];
+            this.foldStats = new double[this.foldK + 1][];
             this.errorTracker = new RegressionStatistics(this.foldK);
             // Create a buffer for the parameters.
             String[] theseParms = new String[this.parms.size() + 1];
@@ -163,11 +169,14 @@ public class CrossValidateProcessor implements ICommand {
             List<String> parmValues = this.parms.get();
             parmValues.add(this.modelDir.toString());
             theseParms = parmValues.toArray(theseParms);
-            CmdLineParser parser = new CmdLineParser(this.trainingProcessor);
-            parser.parseArgument(theseParms);
+            this.trainingProcessor.parseArgs(theseParms);
+            // Setup the training configuration.
+            this.trainingProcessor.setupTraining();
+            // This will hold the validation report statistic titles.
+            String[] statTitles = null;
             // Prevent the model from saving.
             this.trainingProcessor.setSearchMode();
-            for (int k = 1; k < this.foldK; k++) {
+            for (int k = 1; k <= this.foldK; k++) {
                 TabbedDataSetReader myReader = this.trainingProcessor.openReader(this.mainFile);
                 this.trainingProcessor.configureTraining(myReader);
                 // Fix the comment and run the training.
@@ -175,7 +184,8 @@ public class CrossValidateProcessor implements ICommand {
                 this.trainingProcessor.run();
                 // Compute the accuracy.
                 MultiLayerNetwork model = this.trainingProcessor.getBestModel();
-                double thisError = this.trainingProcessor.testPredictions(model, this.mainFile);
+                IPredictError errors = this.trainingProcessor.testPredictions(model, this.mainFile);
+                double thisError = errors.getError();
                 log.info("Mean error for this model was {}.", thisError);
                 if (thisError < this.bestError) {
                     this.bestIdx = k;
@@ -185,8 +195,14 @@ public class CrossValidateProcessor implements ICommand {
                 } else {
                     log.info("Best so far is fold {} with error {}.", this.bestIdx, this.bestError);
                 }
+                // Now we need to track this model's performance.  First, insure we have titles.
+                if (statTitles == null)
+                    statTitles = errors.getTitles();
+                // Store the mean error.
                 this.errorTracker.add(thisError);
                 this.foldErrors[k] = thisError;
+                // Store the auxiliary stats.
+                this.foldStats[k] = errors.getStats();
                 // Shuffle the input for the next fold.
                 this.mainFile.rotate(1, this.testSize);
             }
@@ -196,11 +212,16 @@ public class CrossValidateProcessor implements ICommand {
             // Build the cross-validation report.
             String boundary = StringUtils.repeat('=', 25);
             TextStringBuilder buffer = new TextStringBuilder(25 * (this.foldK + 6) + 50);
-            buffer.appendln(boundary);
-            buffer.appendln(String.format("%4s. %14s", "Fold", "Mean Error"));
             buffer.appendNewLine();
-            for (int k = 1; k <= this.foldK; k++)
-                buffer.appendln(String.format("%4d. %14.8f", k, this.foldErrors[k]));
+            buffer.appendln(boundary);
+            buffer.appendln(String.format("%4s  %14s ", "Fold", "Mean Error")
+                    + Arrays.stream(statTitles).map(x -> String.format(" %14s", x)).collect(Collectors.joining()));
+            buffer.appendNewLine();
+            for (int k = 1; k <= this.foldK; k++) {
+                char flag = (k == this.bestIdx ? '*' : ' ');
+                buffer.appendln(String.format("%4d. %14.8f%c", k, this.foldErrors[k], flag)
+                        + Arrays.stream(this.foldStats[k]).mapToObj(x -> String.format(" %14.8f", x)).collect(Collectors.joining()));
+            }
             buffer.appendln(boundary);
             buffer.appendNewLine();
             buffer.appendln(String.format("Cross-validation metrics: trimean %14.8f, trimmed mean %14.8f, IQR %14.8f", this.errorTracker.trimean(),
@@ -210,7 +231,7 @@ public class CrossValidateProcessor implements ICommand {
             RunStats.writeTrialReport(this.trainingProcessor.getTrialFile(), "Cross-Validation Report", report);
             log.info(report);
         } catch (Exception e) {
-            System.err.println("Error in training: " + e.getMessage());
+            e.printStackTrace(System.err);
         }
     }
 

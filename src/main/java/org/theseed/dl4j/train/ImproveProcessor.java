@@ -52,8 +52,9 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 if (! this.modelDir.isDirectory()) {
                     throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 } else {
+                    this.setupTraining(labelCol);
                     TabbedDataSetReader myReader = this.openReader(this.trainingFile, this.labelCol);
-                    this.setupTraining(myReader, labelCol);
+                    this.initializeReader(myReader, labelCol);
                     // Read in the testing set.
                     readTestingSet();
                 }

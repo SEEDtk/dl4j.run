@@ -168,6 +168,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
             if (this.help) {
                 parser.printUsage(System.err);
             } else {
+                this.setupTraining();
                 // Verify the model directory and read the labels.
                 TabbedDataSetReader myReader = this.openReader(this.trainingFile, null);
                 // Initialize the testing set and set up the columns.
@@ -193,7 +194,8 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
 
     @Override
     public void configureTraining(TabbedDataSetReader myReader) throws IOException {
-        setupTraining(myReader, null);
+        // Initialize the reader.
+        this.initializeReader(myReader, null);
         // Configure the input for regression.
         this.reader.setRegressionColumns();
         // Setup for training.
@@ -267,13 +269,15 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     }
 
     @Override
-    protected IPredictError initializePredictError(List<String> labels) {
-        return new RegressionPredictError(labels);
+    protected IPredictError initializePredictError(List<String> labels, int rows) {
+        return new RegressionPredictError(labels, rows);
     }
 
     @Override
     protected Iterable<DataSet> openDataFile(List<String> strings) throws IOException {
-        return this.openReader(strings, null);
+        TabbedDataSetReader retVal = this.openReader(strings, null);
+        retVal.setRegressionColumns();
+        return retVal;
     }
 
     @Override
@@ -290,6 +294,29 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     @Override
     public TabbedDataSetReader openReader(List<String> strings) throws IOException {
         return this.openReader(strings, null);
+    }
+
+    @Override
+    public boolean parseArgs(String[] theseParms) {
+        boolean retVal = false;
+        CmdLineParser parser = new CmdLineParser(this);
+        try {
+            parser.parseArgument(theseParms);
+            if (this.help)
+                parser.printUsage(System.err);
+            else
+                retVal = true;
+        } catch (CmdLineException e) {
+            System.err.println(e.getMessage());
+            // For parameter errors, we display the command usage.
+            parser.printUsage(System.err);
+        }
+        return retVal;
+    }
+
+    @Override
+    public void setupTraining() throws IOException {
+        this.setupTraining(null);
     }
 
 }

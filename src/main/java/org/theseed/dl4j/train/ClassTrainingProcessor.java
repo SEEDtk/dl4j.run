@@ -158,12 +158,9 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
         this.setDefaults();
         this.setModelDefaults();
         // Parse the command line.
-        CmdLineParser parser = new CmdLineParser(this);
         try {
-            parser.parseArgument(args);
-            if (this.help) {
-                parser.printUsage(System.err);
-            } else {
+            if (this.parseArgs(args)) {
+                this.setupTraining();
                 // Verify the model directory and read the labels.
                 TabbedDataSetReader myReader = this.openReader(this.trainingFile, this.labelCol);
                 // Configure the model for training.
@@ -171,10 +168,6 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
                 // We made it this far, we can run the application.
                 retVal = true;
             }
-        } catch (CmdLineException e) {
-            System.err.println(e.getMessage());
-            // For parameter errors, we display the command usage.
-            parser.printUsage(System.err);
         } catch (IOException e) {
             System.err.println(e.getMessage());
         }
@@ -209,7 +202,7 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
 
 
     @Override
-    protected IPredictError initializePredictError(List<String> labels) {
+    protected IPredictError initializePredictError(List<String> labels, int rows) {
         return new ClassPredictError(labels);
     }
 
@@ -221,8 +214,7 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
 
     @Override
     public void configureTraining(TabbedDataSetReader myReader) throws IOException {
-        setupTraining(myReader, this.labelCol);
-        // Initialize for training.
+        this.initializeReader(myReader, this.labelCol);
         this.initializeTraining();
     }
 
@@ -239,6 +231,29 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     @Override
     public TabbedDataSetReader openReader(List<String> strings) throws IOException {
         return this.openReader(strings, this.labelCol);
+    }
+
+    @Override
+    public boolean parseArgs(String[] theseParms) {
+        boolean retVal = false;
+        CmdLineParser parser = new CmdLineParser(this);
+        try {
+            parser.parseArgument(theseParms);
+            if (this.help)
+                parser.printUsage(System.err);
+            else
+                retVal = true;
+        } catch (CmdLineException e) {
+            System.err.println(e.getMessage());
+            // For parameter errors, we display the command usage.
+            parser.printUsage(System.err);
+        }
+        return retVal;
+    }
+
+    @Override
+    public void setupTraining() throws IOException {
+        this.setupTraining(this.labelCol);
     }
 
 }

@@ -421,15 +421,20 @@ public class LearningProcessor {
      *
      * @param myReader  reader containing the training/testing data.
      *
-     * @oaram labelCol	column specifier for the label column, or NULL if there is none
-     *
      * @throws IOException
      */
-    public void initializeReader(TabbedDataSetReader myReader, String labelCol) throws IOException {
+    public void initializeReader(TabbedDataSetReader myReader) throws IOException {
         // Determine the input type and get the appropriate reader.
+        this.checkChannelMode();
+        this.reader = myReader;
+    }
+
+    /**
+     * Determine whether or not this model uses channel input.
+     */
+    public void checkChannelMode() {
         File channelFile = new File(this.modelDir, "channels.tbl");
         this.channelMode = channelFile.exists();
-        this.reader = myReader;
     }
 
     /**
@@ -584,6 +589,28 @@ public class LearningProcessor {
      */
     public void setComment(String comment) {
         this.comment = comment;
+    }
+
+    /**
+     * @return the list of meta-data column names
+     */
+    protected List<String> getMetaList() {
+        return this.metaList;
+    }
+
+    /**
+     * @return the model for this model directory
+     *
+     * @throws IOException
+     */
+    public MultiLayerNetwork readModel() throws IOException {
+        if (this.modelName == null)
+            this.modelName = new File(this.modelDir, "model.ser");
+        log.info("Reading model from {}.", this.modelName);
+        MultiLayerNetwork model = ModelSerializer.restoreMultiLayerNetwork(this.modelName, false);
+        DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(this.modelName);
+        this.normalizer = normalizer;
+        return model;
     }
 
 }

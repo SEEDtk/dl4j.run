@@ -3,6 +3,7 @@ package org.theseed.dl4j.train;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.util.List;
@@ -36,9 +37,11 @@ import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.Regularization;
 import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
 import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.reports.IValidationReport;
 import org.theseed.utils.FloatList;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.IntegerList;
+import org.theseed.utils.Parms;
 
 public abstract class TrainingProcessor extends LearningProcessor implements ICommand {
 
@@ -626,19 +629,30 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      *
      * @param model		model to test
      * @param file		training file with which to test the model
+     * @param reporter	report object for writing output
      *
      * @return an estimate of the prediction error
      *
      * @throws IOException
      */
-    public IPredictError testPredictions(MultiLayerNetwork model, List<String> trainingFile) throws IOException {
-        Iterable<DataSet> batches = this.openDataFile(trainingFile);
+    public IPredictError testPredictions(MultiLayerNetwork model, List<String> trainingFile, IValidationReport reporter) throws IOException {
+        // Get access to the input data.
+        TabbedDataSetReader batches = this.openDataFile(trainingFile);
+        batches.setNormalizer(this.getNormalizer());
+        // Initialize the error predictor.
         IPredictError errorPredictor = this.initializePredictError(this.getLabels(), trainingFile.size() - 1);
+        // Initialize the output report.
+        reporter.startReport(this.getMetaList(), this.getLabels());
+        // Loop through the data, making predictions.
         for (DataSet batch : batches) {
             INDArray output = model.output(batch.getFeatures());
             errorPredictor.accumulate(batch.getLabels(), output);
+            reporter.reportOutput(batch.getExampleMetaData(String.class), batch.getLabels(), output);
         }
+        // Finish predicting.
         errorPredictor.finish();
+        reporter.finishReport(errorPredictor);
+        // Return the evaluation of the predictions.
         return errorPredictor;
     }
 
@@ -662,7 +676,41 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      *
      * @throws IOException
      */
-    public abstract void configureTraining(TabbedDataSetReader myReader) throws IOException;
+    public void configureTraining(TabbedDataSetReader myReader) throws IOException {
+        this.configureReading(myReader);
+        this.initializeTraining();
+    }
+
+    /**
+     * Configure this processor with the specified parameters.
+     *
+     * @param parms				configuration parameters
+     * @param modelDirectory	directory containing the model
+     *
+     * @throws IOException
+     */
+    public void setupParameters(Parms parms, File modelDirectory) throws IOException {
+        String[] retVal = new String[parms.size() + 1];
+        this.setSubclassDefaults();
+        this.setDefaults();
+        this.setModelDefaults();
+        // Process the parameters.
+        List<String> parmValues = parms.get();
+        parmValues.add(modelDirectory.toString());
+        retVal = parmValues.toArray(retVal);
+        this.parseArgs(retVal);
+        // Setup the training configuration.
+        this.setupTraining();
+    }
+
+    /**
+     * Initialize the reader for reading training and testing data.
+     *
+     * @param myReader	incoming dataset reader
+     *
+     * @throws IOException
+     */
+    public abstract void configureReading(TabbedDataSetReader myReader) throws IOException;
 
     /**
      * Initialize a prediction error object for this trainer.
@@ -683,7 +731,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      *
      * @throws IOException
      */
-    protected abstract Iterable<DataSet> openDataFile(List<String> trainingFile) throws IOException;
+    protected abstract TabbedDataSetReader openDataFile(List<String> trainingFile) throws IOException;
 
     /**
      * Create the run statistics for this training process.
@@ -742,6 +790,15 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     public abstract TabbedDataSetReader openReader(List<String> strings) throws IOException;
 
     /**
+     * @return a data set reader for the specified file
+     *
+     * @param inFile	file to use for training and testing
+     *
+     * @throws IOException
+     */
+    public abstract TabbedDataSetReader openReader(File inFile) throws IOException;
+
+    /**
      * Parse the parameters in the specified array.  This has to be done using a subclass override, because
      * the parameter parser requires that it be called from a class that has all the parameters accessible.
      *
@@ -757,5 +814,12 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      * @throws IOException
      */
     public abstract void setupTraining() throws IOException;
+
+    /**
+     * @return a validation reporter for this training processor
+     *
+     * @param out	output stream to contain the report
+     */
+    public abstract IValidationReport getValidationReporter(OutputStream out);
 
 }

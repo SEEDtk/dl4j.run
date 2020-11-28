@@ -9,6 +9,7 @@ import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.theseed.dl4j.predict.MultiRunProcessor;
 import org.theseed.dl4j.predict.PredictionProcessor;
+import org.theseed.dl4j.predict.ValidateProcessor;
 import org.theseed.dl4j.train.ImproveProcessor;
 import org.theseed.dl4j.train.RegressionTrainingProcessor;
 import org.theseed.dl4j.train.SearchProcessor;
@@ -21,8 +22,7 @@ import org.theseed.utils.Parms;
  * Main entry point for the Deep Learning utility.  The first parameter is a command-- use "train" to
  * train a classification model with a training set and "rtrain" to train a regression model.
  * Use "predict" to apply a model to a prediction set.  Use "search" to test multiple model configurations.
- * Use "multirun" to run predictions on multiple models in a single directory, "jackknife" to do a jackknife
- * analysis that creates a model for each column based on all the others.
+ * Use "multirun" to run predictions on multiple models in a single directory.
  *
  * If the command is followed by an equal sign, then the part after the equal sign should be a file name.
  * The parameters will be read from the file. Otherwise, the parameters are taken from the remainder of
@@ -73,6 +73,10 @@ public class App
                 runObject = new CrossValidateProcessor();
                 success = execute(runObject, args);
                 break;
+            case "validate" :
+                runObject = new ValidateProcessor();
+                success = execute(runObject, args);
+                break;
             case "predict" :
                 runObject = new PredictionProcessor();
                 success = execute(runObject, args);
@@ -111,7 +115,8 @@ public class App
         System.out.println("train        train a classification model");
         System.out.println("rtrain       train a regression model");
         System.out.println("search       train models with multiple different hyper-parameters");
-        System.out.println("rvalidate    cross-validate a regression model training set");
+        System.out.println("xvalidate    cross-validate a model training set");
+        System.out.println("validate	 test a model against a model training set");
         System.out.println("predict      use a trained model to make predictions");
         System.out.println("improve      train an existing model with new data to improve it");
         System.out.println("multirun     use multiple trained models to make predictions");

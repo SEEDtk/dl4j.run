@@ -3,22 +3,19 @@
  */
 package org.theseed.dl4j.train;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
-import org.deeplearning4j.util.ModelSerializer;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
-import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.utils.ICommand;
 
 /**
- * This class loads a pre-trained model and improves it by applying a new training set.  Most of the code is
+ * This class loads a pre-trained classification model and improves it by applying a new training set.  Most of the code is
  * inherited from the superclass LearningProcessor.
  *
  * @author Bruce Parrello
@@ -54,7 +51,7 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 } else {
                     this.setupTraining(labelCol);
                     TabbedDataSetReader myReader = this.openReader(this.trainingFile, this.labelCol);
-                    this.initializeReader(myReader, labelCol);
+                    this.initializeReader(myReader);
                     // Read in the testing set.
                     readTestingSet();
                 }
@@ -75,11 +72,8 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
     public void run() {
         try {
             // Read in the model and the normalizer.
-            if (this.modelName == null)
-                this.modelName = new File(this.modelDir, "model.ser");
-            MultiLayerNetwork model = ModelSerializer.restoreMultiLayerNetwork(this.modelName, false);
-            DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(this.modelName);
-            this.setNormalizer(normalizer);
+            MultiLayerNetwork model = readModel();
+            this.reader.setNormalizer(this.getNormalizer());
             // Now  we train the model.
             Trainer trainer = Trainer.create(this.method, this, log);
             RunStats runStats = RunStats.create(model, this.preference, trainer);

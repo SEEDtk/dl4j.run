@@ -5,6 +5,7 @@ package org.theseed.dl4j.train;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -16,8 +17,9 @@ import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.activations.Activation;
-import org.nd4j.linalg.dataset.DataSet;
 import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.reports.ClassValidationReport;
+import org.theseed.reports.IValidationReport;
 import org.theseed.utils.ICommand;
 
 /**
@@ -208,14 +210,13 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
 
 
     @Override
-    protected Iterable<DataSet> openDataFile(List<String> strings) throws IOException {
+    protected TabbedDataSetReader openDataFile(List<String> strings) throws IOException {
         return this.openReader(strings, this.labelCol);
     }
 
     @Override
-    public void configureTraining(TabbedDataSetReader myReader) throws IOException {
-        this.initializeReader(myReader, this.labelCol);
-        this.initializeTraining();
+    public void configureReading(TabbedDataSetReader myReader) throws IOException {
+        this.initializeReader(myReader);
     }
 
     @Override
@@ -231,6 +232,11 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     @Override
     public TabbedDataSetReader openReader(List<String> strings) throws IOException {
         return this.openReader(strings, this.labelCol);
+    }
+
+    @Override
+    public TabbedDataSetReader openReader(File inFile) throws IOException {
+        return this.openReader(inFile, this.labelCol);
     }
 
     @Override
@@ -254,6 +260,11 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     @Override
     public void setupTraining() throws IOException {
         this.setupTraining(this.labelCol);
+    }
+
+    @Override
+    public IValidationReport getValidationReporter(OutputStream out) {
+        return new ClassValidationReport(out);
     }
 
 }

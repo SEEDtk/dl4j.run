@@ -19,8 +19,6 @@ public class ClassPredictError implements IPredictError {
     // FIELDS
     /** total number of predictions */
     private int rows;
-    /** number of labels */
-    private int cols;
     /** number of true positives */
     private int truePositive;
     /** number of true negatives */
@@ -40,7 +38,6 @@ public class ClassPredictError implements IPredictError {
 
     public ClassPredictError(List<String> labels) {
         this.rows = 0;
-        this.cols = labels.size();
         this.truePositive = 0;
         this.trueNegative = 0;
         this.falseNegative = 0;
@@ -74,10 +71,10 @@ public class ClassPredictError implements IPredictError {
      *
      * @return the index of the highest value in the row
      */
-    private int computeBest(INDArray data, int r) {
+    public static int computeBest(INDArray data, int r) {
         double best = data.getDouble(r, 0);
         int retVal = 0;
-        for (int i = 1; i < this.cols; i++) {
+        for (int i = 1; i < data.columns(); i++) {
             double val = data.getDouble(r, i);
             if (val > best) {
                 best = val;

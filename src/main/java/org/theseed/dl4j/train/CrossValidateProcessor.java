@@ -7,7 +7,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
@@ -23,6 +22,7 @@ import org.theseed.dl4j.RegressionStatistics;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.LineReader;
 import org.theseed.io.Shuffler;
+import org.theseed.reports.NullValidationReport;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
 
@@ -157,21 +157,10 @@ public class CrossValidateProcessor implements ICommand {
             this.foldErrors = new double[this.foldK + 1];
             this.foldStats = new double[this.foldK + 1][];
             this.errorTracker = new RegressionStatistics(this.foldK);
-            // Create a buffer for the parameters.
-            String[] theseParms = new String[this.parms.size() + 1];
             // Create the training processor.
             this.trainingProcessor = TrainingProcessor.create(this.modelType);
             // Set the defaults.
-            this.trainingProcessor.setSubclassDefaults();
-            this.trainingProcessor.setDefaults();
-            this.trainingProcessor.setModelDefaults();
-            // Process the parameters.
-            List<String> parmValues = this.parms.get();
-            parmValues.add(this.modelDir.toString());
-            theseParms = parmValues.toArray(theseParms);
-            this.trainingProcessor.parseArgs(theseParms);
-            // Setup the training configuration.
-            this.trainingProcessor.setupTraining();
+            this.trainingProcessor.setupParameters(this.parms, this.modelDir);
             // This will hold the validation report statistic titles.
             String[] statTitles = null;
             // Prevent the model from saving.
@@ -182,9 +171,9 @@ public class CrossValidateProcessor implements ICommand {
                 // Fix the comment and run the training.
                 this.trainingProcessor.setComment(String.format("Cross-validation fold %d.", k));
                 this.trainingProcessor.run();
-                // Compute the accuracy.
+                // Compute the accuracy.  Note we reread the input.
                 MultiLayerNetwork model = this.trainingProcessor.getBestModel();
-                IPredictError errors = this.trainingProcessor.testPredictions(model, this.mainFile);
+                IPredictError errors = this.trainingProcessor.testPredictions(model, this.mainFile, new NullValidationReport());
                 double thisError = errors.getError();
                 log.info("Mean error for this model was {}.", thisError);
                 if (thisError < this.bestError) {

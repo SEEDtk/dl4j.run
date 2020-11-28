@@ -5,6 +5,7 @@ package org.theseed.dl4j.train;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -19,9 +20,10 @@ import org.kohsuke.args4j.Option;
 import org.nd4j.evaluation.regression.RegressionEvaluation;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.dataset.DataSet;
 import org.theseed.dl4j.RegressionStatistics;
 import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.reports.IValidationReport;
+import org.theseed.reports.RegressionValidationReport;
 import org.theseed.utils.ICommand;
 
 /**
@@ -193,13 +195,11 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     }
 
     @Override
-    public void configureTraining(TabbedDataSetReader myReader) throws IOException {
+    public void configureReading(TabbedDataSetReader myReader) throws IOException {
         // Initialize the reader.
-        this.initializeReader(myReader, null);
+        this.initializeReader(myReader);
         // Configure the input for regression.
         this.reader.setRegressionColumns();
-        // Setup for training.
-        this.initializeTraining();
     }
 
     /**
@@ -274,7 +274,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     }
 
     @Override
-    protected Iterable<DataSet> openDataFile(List<String> strings) throws IOException {
+    protected TabbedDataSetReader openDataFile(List<String> strings) throws IOException {
         TabbedDataSetReader retVal = this.openReader(strings, null);
         retVal.setRegressionColumns();
         return retVal;
@@ -294,6 +294,11 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     @Override
     public TabbedDataSetReader openReader(List<String> strings) throws IOException {
         return this.openReader(strings, null);
+    }
+
+    @Override
+    public TabbedDataSetReader openReader(File inFile) throws IOException {
+        return this.openReader(inFile, null);
     }
 
     @Override
@@ -317,6 +322,11 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     @Override
     public void setupTraining() throws IOException {
         this.setupTraining(null);
+    }
+
+    @Override
+    public IValidationReport getValidationReporter(OutputStream out) {
+        return new RegressionValidationReport(out);
     }
 
 }

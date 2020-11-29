@@ -23,21 +23,26 @@ import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.App;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.MultiParms;
+import org.theseed.utils.ParseFailureException;
 
 /**
  * In search mode, we accept a parameter file that specifies multiple values for one or more
  * parameters.  We run the training processor on each value combination.  This should be done
  * with a small number of iterations to keep performance rational.
  *
- * There are two positional parameters-- the name of the parameter file and the name of the
- * model directory.  The parameters in the parameter file are defined by the TrainingProcessor
- * class, however, no value should be specified for the "--comment" option, and the model
+ * There is one positional parameter-- the name of the model directory.  The parameter file
+ * must be "parms.prm" in that directory.
+ *
+ * The parameters in the parameter file are defined by the TrainingProcessor class, however,
+ * no value should be specified for the "--comment" option (it will be overridden), and the model
  * directory name will come from the command line, not the parameter file.
  *
  * The command-line options are as follows.
  *
  * -h	display command-line usage
  * -t	model type (REGRESSION or CLASS)
+ *
+ * --parms		name of the parameter file (if not the default)
  *
  * --saveAll	if specified, each model will be saved to a different file, with the name "modelXX.ser", where
  * 				XX is the iteration number
@@ -68,12 +73,12 @@ public class SearchProcessor implements ICommand {
     @Option(name = "--saveAll", usage = "save all models")
     private boolean saveAll;
 
-    /** parameter file */
-    @Argument(index=0, metaVar="parms.prm", usage="parameter file with tab-separated alternatives", required=true)
+    /** parameter file (if not the default) */
+    @Option(name = "--parms", metaVar="parms.prm", usage="parameter file with tab-separated alternatives")
     private File parmFile;
 
     /** model directory */
-    @Argument(index=1, metaVar="modelDir", usage="model directory", required=true)
+    @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
 
@@ -86,6 +91,7 @@ public class SearchProcessor implements ICommand {
             this.help = false;
             this.saveAll = false;
             this.modelType = TrainingProcessor.Type.CLASS;
+            this.parmFile = null;
             parser.parseArgument(args);
             if (this.help) {
                 parser.printUsage(System.err);
@@ -94,6 +100,9 @@ public class SearchProcessor implements ICommand {
                 if (! this.modelDir.isDirectory()) {
                     throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 } else {
+                    if (this.parmFile == null)
+                        this.parmFile = new File(this.modelDir, "parms.prm");
+                    log.info("Reading parameters from {}.", this.parmFile);
                     this.parmIterator = new MultiParms(this.parmFile);
                     // Denote we have been successful.
                     retVal = true;
@@ -130,9 +139,12 @@ public class SearchProcessor implements ICommand {
                 File modelFile = new File(this.modelDir, String.format("model%d.ser", iteration));
                 this.parmIterator.replace("--name", modelFile.toString());
             }
+            // Insure we have a comment position in the parameter array.
+            this.parmIterator.replace("--comment", "searching");
             // Update the comment and create the parameter array.
-            this.parmIterator.replace("--comment", String.format("Iteration %d: %s", iteration, this.parmIterator));
             List<String> theseParms = this.parmIterator.next();
+            int commentIdx = theseParms.indexOf("--comment");
+            theseParms.set(commentIdx+1, String.format("Iteration %d: %s", iteration, this.parmIterator));
             // Save the varying values.
             String[] values = new String[varMap.size() + 1];
             for (int i = 0; i < headings.length; i++)
@@ -144,10 +156,12 @@ public class SearchProcessor implements ICommand {
             String[] parmBuffer = new String[this.parmIterator.size()];
             String[] actualParms = theseParms.toArray(parmBuffer);
             try {
-                App.execute(processor, actualParms);
+                boolean ok = App.execute(processor, actualParms);
+                if (! ok)
+                    throw new ParseFailureException("Failed to validate parameters.");
                 // Save the accuracy.
                 double newRating = processor.getRating();
-                values[varMap.size()] = String.format("%12.4f", newRating);
+                values[varMap.size()] = String.format("%14.6g", newRating);
                 // Compare the rating.
                 boolean save = this.saveAll;
                 if (newRating > bestRating) {
@@ -163,6 +177,9 @@ public class SearchProcessor implements ICommand {
                     processor.saveModelForced();
                 // Save this row of the summary array.
                 data.add(values);
+            } catch (ParseFailureException e) {
+                log.error("Fatal exception in iteration {}: {}", iteration, e.getMessage());
+                throw new RuntimeException(e);
             } catch (Exception e) {
                 log.error("Exception in iteration {}: {}", iteration, e.getMessage());
                 e.printStackTrace(System.err);

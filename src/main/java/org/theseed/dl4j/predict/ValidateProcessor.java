@@ -24,13 +24,15 @@ import org.theseed.utils.Parms;
  * This command applies an existing model to a formatted training/testing set.  The output shows a comparison between the predicted and actual
  * results.
  *
- * The positional parameters are the name of the parameter file and the name of the model directory.
+ * The positional parameter is the name of the model directory.
  *
  * The command-line options are as follows.
  *
  * -h	display command-line usage
  * -t	type of model (REGRESSION or CLASS, default CLASS)
- * -i	file containing the training/testing set (default is to use the parameter file)
+ * -i	file containing the training/testing set (default is to use the parameter file value)
+ *
+ * --parms name of the parameter file (the default is "parms.prm" in the model directory)
  *
  * @author Bruce Parrello
  *
@@ -60,11 +62,11 @@ public class ValidateProcessor implements ICommand {
     private File inFile;
 
     /** parameter file */
-    @Argument(index=0, metaVar="parms.prm", usage="parameter file with tab-separated alternatives", required=true)
+    @Option(name = "--parms", metaVar="parms.prm", usage="parameter file (if not the default)")
     private File parmFile;
 
     /** model directory */
-    @Argument(index=1, metaVar="modelDir", usage="model directory", required=true)
+    @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
     @Override
@@ -76,18 +78,22 @@ public class ValidateProcessor implements ICommand {
             this.help = false;
             this.inFile = null;
             this.modelType = TrainingProcessor.Type.CLASS;
+            this.parmFile = null;
             parser.parseArgument(args);
             if (this.help) {
                 parser.printUsage(System.err);
             } else {
+                // Verify the model directory.
+                if (! this.modelDir.isDirectory())
+                    throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 // Read the parameter file.
+                if (this.parmFile == null)
+                    this.parmFile = new File(this.modelDir, "parms.prm");
+                log.info("Reading parameters from {}.", this.parmFile);
                 if (! this.parmFile.canRead())
                     throw new FileNotFoundException("Parameter file " + this.parmFile + " not found or unreadable.");
                 else {
                     this.parms = new Parms(this.parmFile);
-                    // Verify the model directory.
-                    if (! this.modelDir.isDirectory())
-                        throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                     if (this.inFile != null) {
                         if (! this.inFile.canRead())
                             throw new FileNotFoundException("Input file " + this.inFile + " is not found or unreadable.");

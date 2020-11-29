@@ -26,6 +26,7 @@ import org.theseed.dl4j.ChannelDataSetReader;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.utils.ICommand;
+import org.theseed.utils.ParseFailureException;
 
 /**
  * This command runs multiple models against parallel input files.  In each file a single
@@ -149,7 +150,7 @@ public class MultiRunProcessor implements ICommand {
                         // Find the index of the main class column in the label list.
                         this.classIdx = this.labels.indexOf(this.keyClass);
                         if (this.classIdx < 0)
-                            throw new IllegalArgumentException("Label \"" + this.keyClass +
+                            throw new ParseFailureException("Label \"" + this.keyClass +
                                     "\" not found in class label list.");
                         // Finally, open the input file.
                         if (this.inputFile == null) {
@@ -172,7 +173,7 @@ public class MultiRunProcessor implements ICommand {
             }
         } catch (IOException e) {
             System.err.print(e.getMessage());
-        } catch (CmdLineException e) {
+        } catch (CmdLineException | ParseFailureException e) {
             System.err.print("Invalid command-line options: " + e.getMessage());
         }
         return retVal;

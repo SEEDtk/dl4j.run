@@ -17,6 +17,7 @@ import org.theseed.dl4j.train.ClassTrainingProcessor;
 import org.theseed.dl4j.train.CrossValidateProcessor;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
+import org.theseed.utils.ParseFailureException;
 
 /**
  * Main entry point for the Deep Learning utility.  The first parameter is a command-- use "train" to
@@ -95,7 +96,7 @@ public class App
                 showHelp();
                 break;
             default :
-                throw new IllegalArgumentException("Invalid command code " + command[0] + ".");
+                throw new ParseFailureException("Invalid command code " + command[0] + ".");
             }
             if (! success) exitCode = 255;
         } catch (Exception e) {

@@ -25,6 +25,7 @@ import org.theseed.io.Shuffler;
 import org.theseed.reports.NullValidationReport;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
+import org.theseed.utils.ParseFailureException;
 
 /**
  * This class performs cross-validation on a training set.  The set is divided into equal portions (folds)
@@ -33,12 +34,15 @@ import org.theseed.utils.Parms;
  *
  * The rating of the model is a prediction error, computed according to the model type.
  *
- * The positional parameters are the name of the parameter file and the name of the model directory.
+ * The positional parameter is the name of the model directory.
+ *
  * The command-line options are as follows.
  *
  * -h	display command-line usage
  * -k	number of folds to use (default 10)
  * -t	type of model (CLASS or REGRESSION, default CLASS)
+ *
+ * --parms 	name of the parameter file (default is "parms.prm" in the model directory)
  *
  * @author Bruce Parrello
  *
@@ -82,7 +86,7 @@ public class CrossValidateProcessor implements ICommand {
     private int foldK;
 
     /** parameter file */
-    @Argument(index=0, metaVar="parms.prm", usage="parameter file with tab-separated alternatives", required=true)
+    @Option(name = "--parms", metaVar="parms.prm", usage="parameter file (if not the default)")
     private File parmFile;
 
     /** model directory */
@@ -98,21 +102,26 @@ public class CrossValidateProcessor implements ICommand {
             this.help = false;
             this.foldK = 10;
             this.modelType = TrainingProcessor.Type.CLASS;
+            this.parmFile = null;
             parser.parseArgument(args);
             if (this.help) {
                 parser.printUsage(System.err);
             } else {
                 // Verify that the fold size is reasonable.
                 if (this.foldK < 2)
-                    throw new IllegalArgumentException("Invalid k-fold " + Integer.toString(this.foldK) + ".  Must be 2 or greater.");
+                    throw new ParseFailureException("Invalid k-fold " + Integer.toString(this.foldK) + ".  Must be 2 or greater.");
+                // Verify the model directory.
+                if (! this.modelDir.isDirectory())
+                    throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
+                // Read the parameter file.
+                if (this.parmFile == null)
+                    this.parmFile = new File(this.modelDir, "parms.prm");
+                log.info("Reading parameters from {}.", this.parmFile);
                 // Read the parameter file.
                 if (! this.parmFile.canRead())
                     throw new FileNotFoundException("Parameter file " + this.parmFile + " not found or unreadable.");
                 else {
                     this.parms = new Parms(this.parmFile);
-                    // Verify the model directory.
-                    if (! this.modelDir.isDirectory())
-                        throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                     // Extract the training file.
                     String trainingName = this.parms.getValue("--training");
                     File trainingFile;
@@ -137,7 +146,7 @@ public class CrossValidateProcessor implements ICommand {
                     retVal = true;
                 }
             }
-        } catch (CmdLineException e) {
+        } catch (CmdLineException | ParseFailureException e) {
             System.err.println(e.getMessage());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);

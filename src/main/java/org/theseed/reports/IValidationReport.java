@@ -15,7 +15,7 @@ import org.theseed.dl4j.train.IPredictError;
  * @author Bruce Parrello
  *
  */
-public interface IValidationReport {
+public interface IValidationReport extends AutoCloseable {
 
     /**
      * Initialize the report.
@@ -40,5 +40,10 @@ public interface IValidationReport {
      * @param predictor		error prediction object
      */
     void finishReport(IPredictError errors);
+
+    /**
+     * Close the underlying file.
+     */
+    public void close();
 
 }

@@ -28,4 +28,8 @@ public class NullValidationReport implements IValidationReport {
     public void finishReport(IPredictError errors) {
     }
 
+    @Override
+    public void close() {
+    }
+
 }

@@ -40,7 +40,7 @@ public class RegressionValidationReport extends BaseValidationReport {
         // Note there are three columns per label.
         for (String label : labels) {
             this.buffer.append('\t');
-            this.buffer.append(label).append("\to.").append(label).append("\te.").append(label);
+            this.buffer.append(label).append("\to-").append(label).append("\te-").append(label);
         }
         this.println(this.buffer.toString());
     }

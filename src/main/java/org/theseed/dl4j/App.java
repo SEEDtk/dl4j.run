@@ -112,14 +112,14 @@ public class App
     public static void showHelp() {
         System.out.println("Available commands:");
         System.out.println();
-        System.out.println("train        train a classification model");
+        System.out.println("multirun     use multiple trained models to make predictions");
+        System.out.println("improve      train an existing model with new data to improve it");
+        System.out.println("predict      use a trained model to make predictions");
         System.out.println("rtrain       train a regression model");
         System.out.println("search       train models with multiple different hyper-parameters");
-        System.out.println("xvalidate    cross-validate a model training set");
+        System.out.println("train        train a classification model");
         System.out.println("validate	 test a model against a model training set");
-        System.out.println("predict      use a trained model to make predictions");
-        System.out.println("improve      train an existing model with new data to improve it");
-        System.out.println("multirun     use multiple trained models to make predictions");
+        System.out.println("xvalidate    cross-validate a model training set");
     }
 
     /**

@@ -90,7 +90,7 @@ public class CrossValidateProcessor implements ICommand {
     private File parmFile;
 
     /** model directory */
-    @Argument(index=1, metaVar="modelDir", usage="model directory", required=true)
+    @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
     @Override

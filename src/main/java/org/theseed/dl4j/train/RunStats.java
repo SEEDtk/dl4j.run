@@ -15,8 +15,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This class describes a fitting run.  It is used to communicate between the training-related
- * processors and the actual trainers.
+ * This class describes a fitting run. It is used to communicate between the
+ * training-related processors and the actual trainers.
  *
  * @author Bruce Parrello
  */
@@ -41,8 +41,9 @@ abstract public class RunStats {
         /** save the model with the highest pseudo-accuracy */
         ACCURACY,
         /** save the model with the highest bound-accuracy */
-        BOUNDED
-        ;
+        BOUNDED,
+        /** save the model with the lowest mean absolute error */
+        MAE;
     }
 
     /** logging facility */
@@ -95,7 +96,7 @@ abstract public class RunStats {
     /**
      * Construct a blank run tracker.
      *
-     * @param model		model whose runs are to be tracked
+     * @param model model whose runs are to be tracked
      */
     protected RunStats(MultiLayerNetwork model) {
         this.errorStop = false;
@@ -113,9 +114,9 @@ abstract public class RunStats {
     /**
      * Construct a classification run tracker of the appropriate type.
      *
-     * @param model		model whose runs are to be tracked
-     * @param type		desired optimization type
-     * @oaram trainer	training running the statistics
+     * @param model model whose runs are to be tracked
+     * @param type  desired optimization type
+     * @oaram trainer training running the statistics
      */
     public static RunStats create(MultiLayerNetwork model, OptimizationType type, Trainer trainer) {
         RunStats retVal = null;
@@ -134,10 +135,10 @@ abstract public class RunStats {
     /**
      * Construct a regression run tracker of the appropriate type.
      *
-     * @param model		model whose runs are to be tracked
-     * @param type		desired optimization type
-     * @oaram trainer	trainer running the statistics
-     * @param processor	regression training processor for the model
+     * @param model model whose runs are to be tracked
+     * @param type  desired optimization type
+     * @oaram trainer trainer running the statistics
+     * @param processor regression training processor for the model
      */
     public static RunStats createR(MultiLayerNetwork model, RegressionType type, Trainer trainer,
             RegressionTrainingProcessor processor) {
@@ -157,6 +158,10 @@ abstract public class RunStats {
             break;
         case BOUNDED:
             retVal = new RunStats.BoundAccuracy(model, processor);
+            break;
+        case MAE:
+            retVal = new RunStats.ErrorAccuracy(model, processor);
+            break;
         }
         retVal.eventsName = trainer.eventsName();
         return retVal;
@@ -236,7 +241,7 @@ abstract public class RunStats {
     /**
      * Store the duration string.
      *
-     * @param newValue	duration to store
+     * @param newValue duration to store
      */
     public void setDuration(String newValue) {
         this.duration = newValue;
@@ -251,7 +256,8 @@ abstract public class RunStats {
 
     /**
      * Store the new best model.
-     * @param bestModel 	the new best model
+     *
+     * @param bestModel the new best model
      */
     public void setBestModel(MultiLayerNetwork bestModel) {
         this.bestModel = bestModel;
@@ -286,22 +292,22 @@ abstract public class RunStats {
     /**
      * Check the model to see if we need to save this as the best model so far.
      *
-     * @param model			current state of the model
-     * @param testingSet	testing set for evaluating the model
-     * @param processor		training processor managing the training
-     * @param seconds		number of seconds spent processing this section
-     * @param eventType		label to use for events
-     * @param processType	label to use for processing
+     * @param model       current state of the model
+     * @param testingSet  testing set for evaluating the model
+     * @param processor   training processor managing the training
+     * @param seconds     number of seconds spent processing this section
+     * @param eventType   label to use for events
+     * @param processType label to use for processing
      */
     abstract public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
-            double seconds,String eventType, String processType);
+            double seconds, String eventType, String processType);
 
     /**
      * Write a report to the trial log.
      *
-     * @param logFile	file to contain the trial log
-     * @param label		heading comment, if any
-     * @param report	text of the report to write, with internal new-lines
+     * @param logFile file to contain the trial log
+     * @param label   heading comment, if any
+     * @param report  text of the report to write, with internal new-lines
      *
      * @throws IOException
      */
@@ -318,11 +324,12 @@ abstract public class RunStats {
     /**
      * Evaluate a model against a testing set
      *
-     * @param model			model to evaluate
-     * @param testingSet	testing set for the evaluation
-     * @param labels		list of label names
+     * @param model      model to evaluate
+     * @param testingSet testing set for the evaluation
+     * @param labels     list of label names
      *
-     * @return an evaluation object containing an assessment of the model's performance
+     * @return an evaluation object containing an assessment of the model's
+     *         performance
      */
     public Evaluation evaluateModel(MultiLayerNetwork model, DataSet testingSet, List<String> labels) {
         this.output = model.output(testingSet.getFeatures());
@@ -334,13 +341,14 @@ abstract public class RunStats {
     }
 
     /**
-     * Statistically score a model against a testing set.  Subclasses that use this must provide
-     * a chooseAltScore method.
+     * Statistically score a model against a testing set. Subclasses that use this
+     * must provide a chooseAltScore method.
      *
-     * @param model			model to evaluate
-     * @param testingSet	testing set for the evaluation
+     * @param model      model to evaluate
+     * @param testingSet testing set for the evaluation
      *
-     * @return an evaluation object containing an assessment of the model's performance
+     * @return an evaluation object containing an assessment of the model's
+     *         performance
      */
     public RegressionEvaluation scoreModel(MultiLayerNetwork model, DataSet testingSet, List<String> labels) {
         this.output = model.output(testingSet.getFeatures());
@@ -352,12 +360,12 @@ abstract public class RunStats {
     }
 
     /**
-     * Compute the pseudo-accuracy for all columns.  The pseudo-accuracy is the fraction of entries
-     * where the output value is on the same side of the bound as the value in the testing
-     * set.
+     * Compute the pseudo-accuracy for all columns. The pseudo-accuracy is the
+     * fraction of entries where the output value is on the same side of the bound
+     * as the value in the testing set.
      *
-     * @param testingSet	testing set containing desired results
-     * @param bound			threshold for pseudo-accuracy
+     * @param testingSet testing set containing desired results
+     * @param bound      threshold for pseudo-accuracy
      *
      * @return the pseudo-accuracy for the given label column
      */
@@ -369,17 +377,20 @@ abstract public class RunStats {
             for (long c = 0; c < expect.columns(); c++) {
                 boolean eDiff = (expect.getDouble(r, c) >= bound);
                 boolean oDiff = (output.getDouble(r, c) >= bound);
-                if (eDiff == oDiff) goodCount++;
+                if (eDiff == oDiff)
+                    goodCount++;
                 total++;
             }
         }
         return (((double) goodCount) / total);
     }
+
     /**
-     * Compute the bound accuracy for all columns.  The bound accuracy is the fraction of entries
-     * where the output value rounds to the value in the testing set.
+     * Compute the bound accuracy for all columns. The bound accuracy is the
+     * fraction of entries where the output value rounds to the value in the testing
+     * set.
      *
-     * @param testingSet	testing set containing desired results
+     * @param testingSet testing set containing desired results
      *
      * @return the pseudo-accuracy for the given label column
      */
@@ -390,18 +401,19 @@ abstract public class RunStats {
         for (long r = 0; r < expect.rows(); r++) {
             for (long c = 0; c < expect.columns(); c++) {
                 double oValue = Math.round(output.getDouble(r, c));
-                if (oValue == expect.getDouble(r, c)) goodCount++;
+                if (oValue == expect.getDouble(r, c))
+                    goodCount++;
                 total++;
             }
         }
         return (((double) goodCount) / total);
     }
 
-
-    /** @return the alternate score preferred by this criterion
+    /**
+     * @return the alternate score preferred by this criterion
      *
-     * @param eval			RegressionEvaluation object containing the scores
-     * @param testingSet 	testing set with target values
+     * @param eval       RegressionEvaluation object containing the scores
+     * @param testingSet testing set with target values
      */
     protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
         return eval.averageRSquared();
@@ -421,7 +433,6 @@ abstract public class RunStats {
         return output;
     }
 
-
     // SUBCLASSES
 
     /**
@@ -436,28 +447,29 @@ abstract public class RunStats {
         /**
          * Check the model to see if we need to save this as the best model so far.
          *
-         * @param model			current state of the model
-         * @param testingSet	testing set for evaluating the model
-         * @param processor		training processor managing the training
-         * @param seconds		number of seconds spent processing this section
-         * @param eventType		label to use for events
-         * @param processType	label to use for processing
+         * @param model       current state of the model
+         * @param testingSet  testing set for evaluating the model
+         * @param processor   training processor managing the training
+         * @param seconds     number of seconds spent processing this section
+         * @param eventType   label to use for events
+         * @param processType label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
-                double seconds, String eventType, String processType) {
+        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+                String eventType, String processType) {
             this.evaluateModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
-            if (this.newScore < this.getBestScore() || newScore == this.getBestScore() && this.newAccuracy > this.getBestAccuracy()) {
+            if (this.newScore < this.getBestScore()
+                    || newScore == this.getBestScore() && this.newAccuracy > this.getBestAccuracy()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
             } else {
-                saveFlag = String.format("  Best score was %g in %d with accuracy %g.", this.getBestScore(), this.getBestEvent(),
-                        this.getBestAccuracy());
+                saveFlag = String.format("  Best score was %g in %d with accuracy %g.", this.getBestScore(),
+                        this.getBestEvent(), this.getBestAccuracy());
                 this.uselessIteration();
             }
-            log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",
-                    this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}", this.getEventCount(),
+                    eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
         }
 
         @Override
@@ -479,19 +491,20 @@ abstract public class RunStats {
         /**
          * Check the model to see if we need to save this as the best model so far.
          *
-         * @param model			current state of the model
-         * @param testingSet	testing set for evaluating the model
-         * @param processor		training processor managing the training
-         * @param seconds		number of seconds spent processing this section
-         * @param eventType		label to use for events
-         * @param processType	label to use for processing
+         * @param model       current state of the model
+         * @param testingSet  testing set for evaluating the model
+         * @param processor   training processor managing the training
+         * @param seconds     number of seconds spent processing this section
+         * @param eventType   label to use for events
+         * @param processType label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
-                double seconds, String eventType, String processType) {
+        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+                String eventType, String processType) {
             this.evaluateModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
-            if (this.newAccuracy > this.getBestAccuracy() || this.newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
+            if (this.newAccuracy > this.getBestAccuracy()
+                    || this.newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
             } else {
@@ -499,8 +512,8 @@ abstract public class RunStats {
                         this.getBestEvent(), this.getBestScore());
                 this.uselessIteration();
             }
-            log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",
-                    this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}", this.getEventCount(),
+                    eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
         }
 
     }
@@ -517,28 +530,29 @@ abstract public class RunStats {
         /**
          * Check the model to see if we need to save this as the best model so far.
          *
-         * @param model			current state of the model
-         * @param testingSet	testing set for evaluating the model
-         * @param processor		training processor managing the training
-         * @param seconds		number of seconds spent processing this section
-         * @param eventType		label to use for events
-         * @param processType	label to use for processing
+         * @param model       current state of the model
+         * @param testingSet  testing set for evaluating the model
+         * @param processor   training processor managing the training
+         * @param seconds     number of seconds spent processing this section
+         * @param eventType   label to use for events
+         * @param processType label to use for processing
          */
         @Override
         public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
             this.scoreModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
-            if (this.newScore < this.getBestScore() || newScore == this.getBestScore() && this.newAccuracy > this.getBestAccuracy()) {
+            if (this.newScore < this.getBestScore()
+                    || newScore == this.getBestScore() && this.newAccuracy > this.getBestAccuracy()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
             } else {
-                saveFlag = String.format("  Best score was %g in %d with R-squared %g.", this.getBestScore(), this.getBestEvent(),
-                        this.getBestAccuracy());
+                saveFlag = String.format("  Best score was %g in %d with R-squared %g.", this.getBestScore(),
+                        this.getBestEvent(), this.getBestAccuracy());
                 this.uselessIteration();
             }
-            log.info("Score after {} {} is {}. {} seconds to process {}. R-squared = {}.{}",
-                    this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            log.info("Score after {} {} is {}. {} seconds to process {}. R-squared = {}.{}", this.getEventCount(),
+                    eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
         }
 
         @Override
@@ -549,8 +563,8 @@ abstract public class RunStats {
     }
 
     /**
-      * Subclass for training regression models by coefficient of determination.
-      */
+     * Subclass for training regression models by coefficient of determination.
+     */
     public static class Coefficient extends RunStats {
 
         protected Coefficient(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
@@ -560,24 +574,25 @@ abstract public class RunStats {
         /**
          * Check the model to see if we need to save this as the best model so far.
          *
-         * @param model			current state of the model
-         * @param testingSet	testing set for evaluating the model
-         * @param processor		training processor managing the training
-         * @param seconds		number of seconds spent processing this section
-         * @param eventType		label to use for events
-         * @param processType	label to use for processing
+         * @param model       current state of the model
+         * @param testingSet  testing set for evaluating the model
+         * @param processor   training processor managing the training
+         * @param seconds     number of seconds spent processing this section
+         * @param eventType   label to use for events
+         * @param processType label to use for processing
          */
         @Override
         public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
             this.scoreModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
-            if (this.newAccuracy > this.getBestAccuracy() || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
+            if (this.newAccuracy > this.getBestAccuracy()
+                    || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
             } else {
-                saveFlag = String.format("  Best determination coefficient was %g in %d with score %g.", this.getBestAccuracy(), this.getBestEvent(),
-                        this.getBestScore());
+                saveFlag = String.format("  Best determination coefficient was %g in %d with score %g.",
+                        this.getBestAccuracy(), this.getBestEvent(), this.getBestScore());
                 this.uselessIteration();
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Determination coefficient = {}.{}",
@@ -589,124 +604,158 @@ abstract public class RunStats {
     /**
      * Subclass for training regression models by Pearson correlation.
      */
-   public static class Pearson extends RunStats {
+    public static class Pearson extends RunStats {
 
-       protected Pearson(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
-           super(model);
-       }
+        protected Pearson(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
+            super(model);
+        }
 
-       /**
-        * Check the model to see if we need to save this as the best model so far.
-        *
-        * @param model			current state of the model
-        * @param testingSet	testing set for evaluating the model
-        * @param processor		training processor managing the training
-        * @param seconds		number of seconds spent processing this section
-        * @param eventType		label to use for events
-        * @param processType	label to use for processing
-        */
-       @Override
-       public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
-               String eventType, String processType) {
-           this.scoreModel(model, testingSet, processor.getLabels());
-           String saveFlag = "";
-           if (this.newAccuracy > this.getBestAccuracy() || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
-               this.setBestModel(model.clone());
-               saveFlag = "  Model saved.";
-           } else {
-               saveFlag = String.format("  Best Pearson coefficient was %g in %d with score = %g.", this.getBestAccuracy(), this.getBestEvent(),
-                       this.getBestScore());
-               this.uselessIteration();
-           }
-           log.info("Score after {} {} is {}. {} seconds to process {}. Pearson coefficient = {}.{}",
-                   this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
-       }
+        /**
+         * Check the model to see if we need to save this as the best model so far.
+         *
+         * @param model       current state of the model
+         * @param testingSet  testing set for evaluating the model
+         * @param processor   training processor managing the training
+         * @param seconds     number of seconds spent processing this section
+         * @param eventType   label to use for events
+         * @param processType label to use for processing
+         */
+        @Override
+        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+                String eventType, String processType) {
+            this.scoreModel(model, testingSet, processor.getLabels());
+            String saveFlag = "";
+            if (this.newAccuracy > this.getBestAccuracy()
+                    || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
+                this.setBestModel(model.clone());
+                saveFlag = "  Model saved.";
+            } else {
+                saveFlag = String.format("  Best Pearson coefficient was %g in %d with score = %g.",
+                        this.getBestAccuracy(), this.getBestEvent(), this.getBestScore());
+                this.uselessIteration();
+            }
+            log.info("Score after {} {} is {}. {} seconds to process {}. Pearson coefficient = {}.{}",
+                    this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+        }
 
-       /**
-        * @return the alternate score preferred by this criterion
-        *
-        * @param eval		RegressionEvaluation object containing the scores
-        * @param testingSet	testing set containing the desired outcomes
-        */
-       protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
-           return eval.averagePearsonCorrelation();
-       }
+        /**
+         * @return the alternate score preferred by this criterion
+         *
+         * @param eval       RegressionEvaluation object containing the scores
+         * @param testingSet testing set containing the desired outcomes
+         */
+        protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
+            return eval.averagePearsonCorrelation();
+        }
 
-   }
-
-   /**
-    * Subclass for a variant of pseudo-accuracy where instead of a 1,0 result we are targeting integer results.
-    *
-    */
-public static class BoundAccuracy extends PseudoAccuracy {
-
-    protected BoundAccuracy(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
-        super(model, processor);
     }
 
     /**
-     * @return the alternate score preferred by this criterion
+     * Subclass for a variant of pseudo-accuracy where instead of a 1,0 result we
+     * are targeting integer results.
      *
-     * @param eval		RegressionEvaluation object containing the scores
-     * @param testingSet	testing set containing the desired outcomes
      */
-    protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
-        return boundAccuracy(testingSet);
+    public static class BoundAccuracy extends PseudoAccuracy {
+
+        protected BoundAccuracy(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
+            super(model, processor);
+        }
+
+        /**
+         * @return the alternate score preferred by this criterion
+         *
+         * @param eval       RegressionEvaluation object containing the scores
+         * @param testingSet testing set containing the desired outcomes
+         */
+        protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
+            return boundAccuracy(testingSet);
+        }
+
     }
 
-}
+    /**
+     * Subclass for training regression models by pseudo-accuracy.
+     */
+    public static class PseudoAccuracy extends RunStats {
 
+        protected double bound;
 
-   /**
-    * Subclass for training regression models by pseudo-accuracy.
-    */
-  public static class PseudoAccuracy extends RunStats {
+        protected PseudoAccuracy(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
+            super(model);
+            this.bound = processor.getBound();
+        }
 
-      protected double bound;
+        /**
+         * Check the model to see if we need to save this as the best model so far.
+         *
+         * @param model       current state of the model
+         * @param testingSet  testing set for evaluating the model
+         * @param processor   training processor managing the training
+         * @param seconds     number of seconds spent processing this section
+         * @param eventType   label to use for events
+         * @param processType label to use for processing
+         */
+        @Override
+        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+                String eventType, String processType) {
+            this.scoreModel(model, testingSet, processor.getLabels());
+            String saveFlag = "";
+            if (this.newAccuracy > this.getBestAccuracy()
+                    || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
+                this.setBestModel(model.clone());
+                saveFlag = "  Model saved.";
+            } else {
+                saveFlag = String.format("  Best accuracy was %g in %d with score = %g.", this.getBestAccuracy(),
+                        this.getBestEvent(), this.getBestScore());
+                this.uselessIteration();
+            }
+            log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}", this.getEventCount(),
+                    eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+        }
 
-      protected PseudoAccuracy(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
-          super(model);
-          this.bound = processor.getBound();
-      }
+        /**
+         * @return the alternate score preferred by this criterion
+         *
+         * @param eval       RegressionEvaluation object containing the scores
+         * @param testingSet testing set containing the desired outcomes
+         */
+        protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
+            return pseudoAccuracy(testingSet, bound);
+        }
 
-      /**
-       * Check the model to see if we need to save this as the best model so far.
-       *
-       * @param model			current state of the model
-       * @param testingSet	testing set for evaluating the model
-       * @param processor		training processor managing the training
-       * @param seconds		number of seconds spent processing this section
-       * @param eventType		label to use for events
-       * @param processType	label to use for processing
-       */
-      @Override
-      public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
-              String eventType, String processType) {
-          this.scoreModel(model, testingSet, processor.getLabels());
-          String saveFlag = "";
-          if (this.newAccuracy > this.getBestAccuracy() || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
-              this.setBestModel(model.clone());
-              saveFlag = "  Model saved.";
-          } else {
-              saveFlag = String.format("  Best accuracy was %g in %d with score = %g.", this.getBestAccuracy(), this.getBestEvent(),
-                      this.getBestScore());
-              this.uselessIteration();
-          }
-          log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}",
-                  this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
-      }
+    }
 
-      /**
-       * @return the alternate score preferred by this criterion
-       *
-       * @param eval		RegressionEvaluation object containing the scores
-       * @param testingSet	testing set containing the desired outcomes
-       */
-      protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
-          return pseudoAccuracy(testingSet, bound);
-      }
+    /**
+     * Subclass for training models to minimize mean absolute error
+     */
+    public static class ErrorAccuracy extends RunStats {
 
-  }
+        public ErrorAccuracy(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
+            super(model);
+        }
 
+        @Override
+        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+                String eventType, String processType) {
+            this.scoreModel(model, testingSet, processor.getLabels());
+            String saveFlag = "";
+            if (this.newAccuracy > this.getBestAccuracy()
+                    || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
+                this.setBestModel(model.clone());
+                saveFlag = "  Model saved.";
+            } else {
+                saveFlag = String.format("  Best mean absolute error was %g in %d with score %g.",
+                        -this.getBestAccuracy(), this.getBestEvent(), this.getBestScore());
+                this.uselessIteration();
+            }
+            log.info("Score after {} {} is {}. {} seconds to process {}. Mean absolute error = {}.{}",
+                    this.getEventCount(), eventType, this.newScore, seconds, processType, -this.newAccuracy, saveFlag);
+        }
+
+        protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
+            return -eval.averageMeanAbsoluteError();
+        }
+
+    }
 
 }

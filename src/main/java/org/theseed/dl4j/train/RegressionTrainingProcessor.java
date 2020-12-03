@@ -20,7 +20,7 @@ import org.kohsuke.args4j.Option;
 import org.nd4j.evaluation.regression.RegressionEvaluation;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.theseed.dl4j.RegressionStatistics;
+import org.theseed.counters.RegressionStatistics;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.reports.IValidationReport;
 import org.theseed.reports.RegressionValidationReport;

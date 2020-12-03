@@ -33,8 +33,9 @@ public class ClassValidationReport extends BaseValidationReport {
     @Override
     public void startReport(List<String> metaCols, List<String> labels) {
         this.labelValues = labels;
-        // output the heading line.
-        this.println(StringUtils.join(metaCols,  '\t') + "\texpected\tpredicted\terror");
+        // Output the heading line.
+        String header = this.fixHeaders(StringUtils.join(metaCols,  '\t') + "\texpected\tpredicted\terror");
+        this.println(header);
     }
 
     @Override
@@ -45,7 +46,8 @@ public class ClassValidationReport extends BaseValidationReport {
             int e = ClassPredictError.computeBest(expected, r);
             int o = ClassPredictError.computeBest(output, r);
             String error = (e == o ? "" : "X");
-            this.println(StringUtils.joinWith("\t", rowName, this.labelValues.get(e), this.labelValues.get(o), error));
+            String dataLine = StringUtils.joinWith("\t", rowName, this.labelValues.get(e), this.labelValues.get(o), error);
+            this.println(this.fixDataLine(rowName, dataLine));
         }
     }
 

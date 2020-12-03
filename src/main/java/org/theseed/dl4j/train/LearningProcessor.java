@@ -594,7 +594,7 @@ public class LearningProcessor {
     /**
      * @return the list of meta-data column names
      */
-    protected List<String> getMetaList() {
+    public List<String> getMetaList() {
         return this.metaList;
     }
 

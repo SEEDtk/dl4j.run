@@ -32,6 +32,9 @@ import org.theseed.utils.Parms;
  * -t	type of model (REGRESSION or CLASS, default CLASS)
  * -i	file containing the training/testing set (default is to use the parameter file value)
  *
+ * --id		ID column of the training data; if specified, the training set IDs will be read from "trained.tbl" in the model directory,
+ * 			and the training set members will be marked in the output
+ *
  * --parms name of the parameter file (the default is "parms.prm" in the model directory)
  *
  * @author Bruce Parrello
@@ -65,6 +68,10 @@ public class ValidateProcessor implements ICommand {
     @Option(name = "--parms", metaVar="parms.prm", usage="parameter file (if not the default)")
     private File parmFile;
 
+    /** ID column (if applicable) */
+    @Option(name = "--id", metaVar = "row_id", usage = "ID column for identifying training rows in trained.tbl")
+    private String idCol;
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -79,6 +86,7 @@ public class ValidateProcessor implements ICommand {
             this.inFile = null;
             this.modelType = TrainingProcessor.Type.CLASS;
             this.parmFile = null;
+            this.idCol = null;
             parser.parseArgument(args);
             if (this.help) {
                 parser.printUsage(System.err);
@@ -131,6 +139,8 @@ public class ValidateProcessor implements ICommand {
             processor.checkChannelMode();
             // Create the reporter.
             IValidationReport reporter = processor.getValidationReporter(System.out);
+            if (this.idCol != null)
+                reporter.setupIdCol(this.modelDir, this.idCol, processor.getMetaList());
             // Read the model.
             MultiLayerNetwork model = processor.readModel();
             // Get the input data.

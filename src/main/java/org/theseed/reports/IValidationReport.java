@@ -3,6 +3,8 @@
  */
 package org.theseed.reports;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.List;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -45,5 +47,16 @@ public interface IValidationReport extends AutoCloseable {
      * Close the underlying file.
      */
     public void close();
+
+    /**
+     * Set up to track which input rows were included in the model's original training set.
+     *
+     * @param modelDir	model directory
+     * @param idCol		ID column name
+     * @param metaList	list of metadata column names
+     *
+     * @throws IOException
+     */
+    void setupIdCol(File modelDir, String idCol, List<String> metaList) throws IOException;
 
 }

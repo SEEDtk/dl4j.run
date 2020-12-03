@@ -42,7 +42,8 @@ public class RegressionValidationReport extends BaseValidationReport {
             this.buffer.append('\t');
             this.buffer.append(label).append("\to-").append(label).append("\te-").append(label);
         }
-        this.println(this.buffer.toString());
+        String header = this.buffer.toString();
+        this.println(this.fixHeaders(header));
     }
 
     @Override
@@ -50,14 +51,16 @@ public class RegressionValidationReport extends BaseValidationReport {
         // Loop through the rows of output.
         for (int r = 0; r < metaData.size(); r++) {
             this.buffer.clear();
-            this.buffer.append(metaData.get(r));
+            String rowMeta = metaData.get(r);
+            this.buffer.append(rowMeta);
             for (int i = 0; i < expected.columns(); i++) {
                 double e = expected.getDouble(r, i);
                 double o = output.getDouble(r, i);
                 double error = o - e;
                 this.buffer.append("\t%1.4f\t%1.4f\t%1.6f", e, o, error);
             }
-            this.println(this.buffer.toString());
+            String dataLine = this.buffer.toString();
+            this.println(this.fixDataLine(rowMeta, dataLine));
         }
 
     }

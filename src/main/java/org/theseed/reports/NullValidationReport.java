@@ -3,6 +3,7 @@
  */
 package org.theseed.reports;
 
+import java.io.File;
 import java.util.List;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -30,6 +31,10 @@ public class NullValidationReport implements IValidationReport {
 
     @Override
     public void close() {
+    }
+
+    @Override
+    public void setupIdCol(File modelDir, String idCol, List<String> metaList) {
     }
 
 }

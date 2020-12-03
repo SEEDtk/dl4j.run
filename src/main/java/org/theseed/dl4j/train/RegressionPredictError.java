@@ -7,7 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.theseed.dl4j.RegressionStatistics;
+import org.theseed.counters.RegressionStatistics;
 
 /**
  * This class computes the prediction error for a regression model.  For each output, the mean absolute

@@ -6,7 +6,9 @@ package org.theseed.dl4j.train;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
@@ -18,10 +20,11 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.dl4j.RegressionStatistics;
+import org.theseed.counters.RegressionStatistics;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.LineReader;
 import org.theseed.io.Shuffler;
+import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.NullValidationReport;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
@@ -30,7 +33,7 @@ import org.theseed.utils.ParseFailureException;
 /**
  * This class performs cross-validation on a training set.  The set is divided into equal portions (folds)
  * and a model is trained once for each fold, with the fold used as the testing set and the remaining data used for
- * training.  Each model is then evaluated against the entire training set and the best model is saved.
+ * training.  Each model is then evaluated against the entire training/testing set and the best model is saved.
  *
  * The rating of the model is a prediction error, computed according to the model type.
  *
@@ -41,6 +44,9 @@ import org.theseed.utils.ParseFailureException;
  * -h	display command-line usage
  * -k	number of folds to use (default 10)
  * -t	type of model (CLASS or REGRESSION, default CLASS)
+ *
+ * --id		the name of a column in the training file; if specified, the file "trained.tbl" in the model directory will
+ * 			be written with the value of this column for every row used to train the best model
  *
  * --parms 	name of the parameter file (default is "parms.prm" in the model directory)
  *
@@ -89,6 +95,10 @@ public class CrossValidateProcessor implements ICommand {
     @Option(name = "--parms", metaVar="parms.prm", usage="parameter file (if not the default)")
     private File parmFile;
 
+    /** if specified, the ID column for identifying the rows used to train */
+    @Option(name = "--id", metaVar="row_id", usage = "ID column for input rows, specified if trained.tbl is to be written")
+    private String idCol;
+
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -103,6 +113,7 @@ public class CrossValidateProcessor implements ICommand {
             this.foldK = 10;
             this.modelType = TrainingProcessor.Type.CLASS;
             this.parmFile = null;
+            this.idCol = null;
             parser.parseArgument(args);
             if (this.help) {
                 parser.printUsage(System.err);
@@ -162,6 +173,8 @@ public class CrossValidateProcessor implements ICommand {
             // Denote we have no best result yet.
             this.bestIdx = 1;
             this.bestError = Double.MAX_VALUE;
+            // This is the file to receive the training metadata for the best model.
+            File savedTraining = new File(this.modelDir, "trained.tbl");
             // Set up the error tracking.  Note that we have an extra slot in the array because we start at position 1.
             this.foldErrors = new double[this.foldK + 1];
             this.foldStats = new double[this.foldK + 1][];
@@ -190,6 +203,8 @@ public class CrossValidateProcessor implements ICommand {
                     this.bestError = thisError;
                     log.info("Model is the best so far.");
                     this.trainingProcessor.saveModelForced();
+                    if (this.idCol != null)
+                        this.saveTrainingMeta(savedTraining);
                 } else {
                     log.info("Best so far is fold {} with error {}.", this.bestIdx, this.bestError);
                 }
@@ -202,7 +217,7 @@ public class CrossValidateProcessor implements ICommand {
                 // Store the auxiliary stats.
                 this.foldStats[k] = errors.getStats();
                 // Shuffle the input for the next fold.
-                this.mainFile.rotate(1, this.testSize);
+                this.mainFile.rotate(1, -this.testSize);
             }
             log.info("Best result was fold {} with error {}.", this.bestIdx, this.bestError);
             // Finish the regression statistics.
@@ -230,6 +245,31 @@ public class CrossValidateProcessor implements ICommand {
             log.info(report);
         } catch (Exception e) {
             e.printStackTrace(System.err);
+        }
+    }
+
+    /**
+     * Save the IDs from the training data to the specified file, one per line.
+     *
+     * @param savedTraining		output file
+     *
+     * @throws IOException
+     */
+    private void saveTrainingMeta(File savedTraining) throws IOException {
+        try (PrintWriter writer = new PrintWriter(savedTraining);
+                TabbedLineReader reader = new TabbedLineReader(this.mainFile)) {
+            // Get the ID column.
+            int idColIdx = reader.findField(this.idCol);
+            // Skip over the testing set.
+            Iterator<TabbedLineReader.Line> iter = reader.iterator();
+            for (int i = 0; i < this.testSize; i++)
+                iter.next();
+            // Now accumulate the IDs for the training set.
+            while (iter.hasNext()) {
+                TabbedLineReader.Line line = iter.next();
+                String id = line.get(idColIdx);
+                writer.println(id);
+            }
         }
     }
 

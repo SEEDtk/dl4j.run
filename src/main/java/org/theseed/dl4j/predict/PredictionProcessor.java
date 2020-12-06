@@ -205,9 +205,10 @@ public class PredictionProcessor implements ICommand {
                     System.out.println();
                 } else {
                     // Here we need to find the best label and its confidence.
+                    int n = this.labels.size();
                     int jBest = 0;
                     double vBest = output.getDouble(i, 0);
-                    for (int j = 1; j < this.labels.size(); j++) {
+                    for (int j = 1; j < n; j++) {
                         double v = output.getDouble(i, j);
                         if (v > vBest) {
                             vBest = v;

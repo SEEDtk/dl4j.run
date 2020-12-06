@@ -35,9 +35,10 @@ public class BatchTrainer extends Trainer {
      * @param reader		reader for traversing the training data
      * @param testingSet	testing set for evaluation
      * @param runStats		a RunStats object describing our progress and success
+     * @param monitor		ITrainReporter for progress monitoring
      */
     @Override
-    public void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet, RunStats runStats) {
+    public void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet, RunStats runStats, ITrainReporter monitor) {
         double oldScore = Double.MAX_VALUE;
         String process = processor.getIterations() + " iterations";
         while (reader.hasNext() && runStats.getEventCount() < processor.getMaxBatches() && ! runStats.isErrorStop()) {
@@ -51,13 +52,14 @@ public class BatchTrainer extends Trainer {
             }
             long duration = (System.currentTimeMillis() - startTime) / 1000;
             // Check for a score bounce.
+            boolean saved = false;
             double newScore = model.score();
             if (oldScore < newScore) {
                 runStats.bounce();
                 log.info("Score at end of batch {} is {}.", runStats.getEventCount(),
                         newScore);
             } else try {
-                runStats.checkModel(model, testingSet, this.processor, duration, this.eventsName(), process);
+                saved = runStats.checkModel(model, testingSet, this.processor, duration, this.eventsName(), process);
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.
                 newScore = Double.NaN;
@@ -68,6 +70,8 @@ public class BatchTrainer extends Trainer {
             if (! Double.isFinite(newScore)) {
                 log.error("Overflow/Underflow in gradient processing.  Model abandoned.");
                 runStats.error();
+            } else {
+                monitor.displayEpoch(runStats.getEventCount(), newScore, saved);
             }
         }
     }

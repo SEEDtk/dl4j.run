@@ -95,9 +95,6 @@ public class LearningProcessor {
     /** model directory */
     @Argument(index = 0, metaVar = "modelDir", usage = "model directory", required = true)
     protected File modelDir;
-    /** trials file name */
-    @Option(name = "--trials", usage = "name for trials log file")
-    private String trialName;
 
 
     /**
@@ -148,7 +145,6 @@ public class LearningProcessor {
         this.earlyStop = 200;
         this.modelName = null;
         this.comment = null;
-        this.trialName = "trials.log";
         // Clear the rating value and the normalizer.
         this.bestRating = 0.0;
         this.normalizer = null;
@@ -157,17 +153,18 @@ public class LearningProcessor {
     /**
      * Train and save the current model.
      *
-     * @param model			model to train
-     * @param runStats		RunStats object for choosing the best model
-     * @param trainer		trainer for training the model
+     * @param model				model to train
+     * @param runStats			RunStats object for choosing the best model
+     * @param trainer			trainer for training the model
+     * @param progressMonitor 	monitor for training progress
      *
      * @throws IOException
      */
-    public void trainModel(MultiLayerNetwork model, RunStats runStats, Trainer trainer) throws IOException {
+    public void trainModel(MultiLayerNetwork model, RunStats runStats, Trainer trainer, ITrainReporter progressMonitor) throws IOException {
         this.reader.setBatchSize(this.batchSize);
         long start = System.currentTimeMillis();
         log.info("Starting trainer.");
-        trainer.trainModel(model, this.reader, getTestingSet(), runStats);
+        trainer.trainModel(model, this.reader, getTestingSet(), runStats, progressMonitor);
         runStats.setDuration(DurationFormatUtils.formatDuration(System.currentTimeMillis() - start, "mm:ss"));
         this.results = runStats;
     }
@@ -503,7 +500,8 @@ public class LearningProcessor {
         if (! this.reader.hasNext()) {
             log.warn("Training set contains only test data. Batch size = {} but {} records in input.",
                     this.testSize, this.getTestingSet().numExamples());
-            throw new IllegalArgumentException("No training data.");
+            throw new IllegalArgumentException("No training data.  Testing set size was " + this.testSize + " but only "
+                    + this.getTestingSet().numExamples() + " records in input.");
         }
     }
 
@@ -572,14 +570,14 @@ public class LearningProcessor {
      * @return the trial file name
      */
     public File getTrialFile() {
-        return new File(this.modelDir, this.trialName);
+        return new File(this.modelDir, "trials.log");
     }
 
     /**
      * @return the trial file base name
      */
     protected String getTrialName() {
-        return this.trialName;
+        return "trials.log";
     }
 
     /**

@@ -6,13 +6,16 @@ package org.theseed.dl4j.train;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
@@ -21,6 +24,9 @@ import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.App;
+import org.theseed.io.ParmDescriptor;
+import org.theseed.io.ParmFile;
+import org.theseed.reports.NullTrainReporter;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.MultiParms;
 import org.theseed.utils.ParseFailureException;
@@ -58,6 +64,8 @@ public class SearchProcessor implements ICommand {
     // FIELDS
     /** iterator that runs through the parameter combinations */
     private MultiParms parmIterator;
+    /** progress monitor from dl4j.win */
+    private ITrainReporter progressMonitor;
 
     // COMMAND LINE
 
@@ -81,6 +89,22 @@ public class SearchProcessor implements ICommand {
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
+
+    /**
+     * Initialize a blank search processor.
+     */
+    public SearchProcessor() {
+        this.progressMonitor = null;
+    }
+
+    /**
+     * Initialize a search processor with a specific progress monitor.
+     *
+     * @param monitor	progress monitor to receive progress reports
+     */
+    public SearchProcessor(ITrainReporter monitor) {
+        this.progressMonitor = monitor;
+    }
 
     @Override
     public boolean parseCommand(String[] args) {
@@ -113,7 +137,7 @@ public class SearchProcessor implements ICommand {
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
         } catch (IOException e) {
-            System.err.println(e.getMessage());
+            throw new UncheckedIOException(e);
         }
         return retVal;
     }
@@ -122,8 +146,19 @@ public class SearchProcessor implements ICommand {
     public void run() {
         // We loop through the parameter combinations, calling the training processor.
         TrainingProcessor processor = TrainingProcessor.create(modelType);
+        processor.setModelDir(this.modelDir);
         // Suppress saving of the model unless we force it.
         processor.setSearchMode();
+        // Set the progress monitor.
+        if (this.progressMonitor != null)
+            processor.setProgressMonitor(this.progressMonitor);
+        else
+            this.progressMonitor = new NullTrainReporter();
+        try {
+            RunStats.writeTrialMarker(processor.getTrialFile(), "Search");
+        } catch (IOException e) {
+            log.error("Error writing trial file: {}", e.getMessage());
+        }
         // These variables track our progress and success.
         int iteration = 1;
         double bestRating = Double.NEGATIVE_INFINITY;
@@ -144,7 +179,12 @@ public class SearchProcessor implements ICommand {
             // Update the comment and create the parameter array.
             List<String> theseParms = this.parmIterator.next();
             int commentIdx = theseParms.indexOf("--comment");
-            theseParms.set(commentIdx+1, String.format("Iteration %d: %s", iteration, this.parmIterator));
+            String iterationName = this.parmIterator.toString();
+            if (iterationName.isEmpty())
+                iterationName = "Solo Training Run";
+            String commentText = String.format("Iteration %d: %s", iteration, iterationName);
+            theseParms.set(commentIdx+1, commentText);
+            this.progressMonitor.showMessage(commentText);
             // Save the varying values.
             String[] values = new String[varMap.size() + 1];
             for (int i = 0; i < headings.length; i++)
@@ -170,6 +210,8 @@ public class SearchProcessor implements ICommand {
                     bestRating = newRating;
                     save = true;
                     log.info("** Best iteration so far.");
+                    this.progressMonitor.showResults(processor.getResultReport());
+                    this.updateParmFile();
                 } else {
                     log.info("** Best iteration was {} with rating {}.", bestIteration, bestRating);
                 }
@@ -184,45 +226,68 @@ public class SearchProcessor implements ICommand {
                 log.error("Exception in iteration {}: {}", iteration, e.getMessage());
                 e.printStackTrace(System.err);
                 log.error("Iteration aborted due to error.");
+                this.progressMonitor.showResults(ExceptionUtils.getStackTrace(e));
             }
             // Count the iteration.
             iteration++;
         }
-        // Now display the result matrix.  First we compute the width for each column.
-        int[] widths = new int[varMap.size() + 1];
-        Arrays.fill(widths, 8);
-        for (String[] cols : data)
-            for (int i = 0; i < widths.length; i++)
-                widths[i] = Math.max(cols[i].length(), widths[i]);
-        // Compute the total width.  We have 7 at the beginning and an extra space before each column.
-        int totWidth = Arrays.stream(widths).sum() + widths.length + 7;
-        String boundary = StringUtils.repeat('=', totWidth);
-        // We will build the report in here.
-        TextStringBuilder buffer = new TextStringBuilder((totWidth + 2) * (data.size() + 4));
-        buffer.appendNewLine();
-        buffer.appendln(boundary);
-        // Write out the heading line.
-        buffer.appendln(this.writeLine(widths, totWidth, "# ", data.get(0)));
-        // Write out a space.
-        buffer.appendln("");
-        // Write out the data lines.
-        for (int i = 1; i < data.size(); i++) {
-            String label = Integer.toString(i) + (i == bestIteration ? "*" : " ");
-            buffer.appendln(this.writeLine(widths, totWidth, label, data.get(i)));
-        }
-        // Write out a trailer line.
-        buffer.appendln(boundary);
-        // Write it to the output log.
-        String report = buffer.toString();
-        log.info(report);
-        // Write it to the trial file.
-        try {
-            RunStats.writeTrialReport(processor.getTrialFile(), "Summary of Search-Mode Results", report);
-        } catch (IOException e) {
-            System.err.println("Error writing trial.log:" + e.getMessage());
+        if (data.size() == 0)
+            log.error("No results from search.");
+        else {
+            // Now display the result matrix.  First we compute the width for each column.
+            int[] widths = new int[varMap.size() + 1];
+            Arrays.fill(widths, 8);
+            for (String[] cols : data)
+                for (int i = 0; i < widths.length; i++)
+                    widths[i] = Math.max(cols[i].length(), widths[i]);
+            // Compute the total width.  We have 7 at the beginning and an extra space before each column.
+            int totWidth = Arrays.stream(widths).sum() + widths.length + 7;
+            String boundary = StringUtils.repeat('=', totWidth);
+            // We will build the report in here.
+            TextStringBuilder buffer = new TextStringBuilder((totWidth + 2) * (data.size() + 4));
+            buffer.appendNewLine();
+            buffer.appendln(boundary);
+            // Write out the heading line.
+            buffer.appendln(this.writeLine(widths, totWidth, "# ", data.get(0)));
+            // Write out a space.
+            buffer.appendln("");
+            // Write out the data lines.
+            for (int i = 1; i < data.size(); i++) {
+                String label = Integer.toString(i) + (i == bestIteration ? "*" : " ");
+                buffer.appendln(this.writeLine(widths, totWidth, label, data.get(i)));
+            }
+            // Write out a trailer line.
+            buffer.appendln(boundary);
+            // Write it to the output log.
+            String report = buffer.toString();
+            log.info(report);
+            // Write it to the trial file.
+            try {
+                RunStats.writeTrialReport(processor.getTrialFile(), "Summary of Search-Mode Results", report);
+                this.progressMonitor.showMessage(String.format("Best iteration was %d with rating %g.", bestIteration, bestRating));
+            } catch (IOException e) {
+                log.error("Error writing trials.log:" + e.getMessage());
+            }
         }
     }
 
+
+    /**
+     * Write the current iteration to the parm file.
+     *
+     * @throws IOException
+     */
+    private void updateParmFile() throws IOException {
+        ParmFile parms = new ParmFile(this.parmFile);
+        Map<String, String> currMap = this.parmIterator.getVariables();
+        for (Map.Entry<String, String> parmEntry : currMap.entrySet()) {
+            String parmName = StringUtils.removeStart(parmEntry.getKey(), "--");
+            ParmDescriptor desc = parms.get(parmName);
+            desc.setValue(parmEntry.getValue());
+        }
+        parms.save(this.parmFile);
+        log.info("Parameter file {} updated.", this.parmFile);
+    }
 
     /**
      * Format an output line from the string array. All the values are centered in the specified width,

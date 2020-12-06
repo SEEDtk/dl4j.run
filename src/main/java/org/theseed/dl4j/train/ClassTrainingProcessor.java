@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.kohsuke.args4j.CmdLineException;
@@ -18,8 +19,10 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.activations.Activation;
 import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.reports.ClassTestValidationReport;
 import org.theseed.reports.ClassValidationReport;
 import org.theseed.reports.IValidationReport;
+import org.theseed.reports.TestValidationReport;
 import org.theseed.utils.ICommand;
 
 /**
@@ -187,7 +190,7 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
      * @param outFile	file to be created for future use as a configuration file
      *
      * @throws IOException */
-    protected void writeParms(File outFile) throws IOException {
+    public void writeParms(File outFile) throws IOException {
         PrintWriter writer = new PrintWriter(outFile);
         writer.format("--col %s\t# input column for class name%n", this.labelCol);
         String typeList = Stream.of(RunStats.OptimizationType.values()).map(RunStats.OptimizationType::name).collect(Collectors.joining(", "));
@@ -253,6 +256,7 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
             System.err.println(e.getMessage());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
+            this.getProgressMonitor().showResults("Error in parameters: " + e.getMessage());
         }
         return retVal;
     }
@@ -265,6 +269,23 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     @Override
     public IValidationReport getValidationReporter(OutputStream out) {
         return new ClassValidationReport(out);
+    }
+
+    @Override
+    public void setMetaCols(String[] cols) {
+        if (cols.length > 1)
+            this.metaCols = StringUtils.join(cols, ',', 0, cols.length - 1);
+        else
+            this.metaCols = "";
+        if (cols.length > 0)
+            this.labelCol = cols[cols.length - 1];
+        else
+            this.labelCol = "1";
+    }
+
+    @Override
+    public TestValidationReport getTestReporter() {
+        return new ClassTestValidationReport();
     }
 
 }

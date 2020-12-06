@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -23,7 +24,9 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.theseed.counters.RegressionStatistics;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.reports.IValidationReport;
+import org.theseed.reports.RegressionTestValidationReport;
 import org.theseed.reports.RegressionValidationReport;
+import org.theseed.reports.TestValidationReport;
 import org.theseed.utils.ICommand;
 
 /**
@@ -146,7 +149,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     private double bound;
 
     @Override
-    protected void writeParms(File outFile) throws IOException {
+    public void writeParms(File outFile) throws IOException {
         PrintWriter writer = new PrintWriter(outFile);
         String typeList = Stream.of(RunStats.RegressionType.values()).map(RunStats.RegressionType::name).collect(Collectors.joining(", "));
         writer.format("## Valid optimization preferences are %s.%n", typeList);
@@ -182,8 +185,9 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
             System.err.println(e.getMessage());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
+            this.getProgressMonitor().showResults("Error in parameters: " + e.getMessage());
         } catch (IOException e) {
-            System.err.println(e.getMessage());
+            throw new UncheckedIOException(e);
         }
         return retVal;
     }
@@ -315,6 +319,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
             System.err.println(e.getMessage());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
+            this.getProgressMonitor().showResults("Error in parameters: " + e.getMessage());
         }
         return retVal;
     }
@@ -327,6 +332,19 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     @Override
     public IValidationReport getValidationReporter(OutputStream out) {
         return new RegressionValidationReport(out);
+    }
+
+    @Override
+    public void setMetaCols(String[] cols) {
+        if (cols.length > 0)
+            this.metaCols = StringUtils.join(cols, ',');
+        else
+            this.metaCols = "";
+    }
+
+    @Override
+    public TestValidationReport getTestReporter() {
+        return new RegressionTestValidationReport();
     }
 
 }

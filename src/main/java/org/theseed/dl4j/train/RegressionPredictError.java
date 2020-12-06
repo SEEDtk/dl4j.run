@@ -116,7 +116,7 @@ public class RegressionPredictError implements IPredictError {
 
     @Override
     public String[] getTitles() {
-        return new String[] { "trimean", "trimmedMean", "IQR" };
+        return new String[] { "MAE", "trimean", "trimmedMean", "IQR" };
     }
 
     @Override
@@ -129,7 +129,7 @@ public class RegressionPredictError implements IPredictError {
             trimmedMean += this.statsTracker[i].trimmedMean(0.2);
             iqr += this.statsTracker[i].iqr();
         }
-        return new double[] { triMean / this.cols, trimmedMean / this.cols, iqr / this.cols };
+        return new double[] { this.getError(), triMean / this.cols, trimmedMean / this.cols, iqr / this.cols };
     }
 
 }

@@ -12,6 +12,7 @@ import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.reports.NullTrainReporter;
 import org.theseed.utils.ICommand;
 
 /**
@@ -77,7 +78,7 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
             // Now  we train the model.
             Trainer trainer = Trainer.create(this.method, this, log);
             RunStats runStats = RunStats.create(model, this.preference, trainer);
-            this.trainModel(model, runStats, trainer);
+            this.trainModel(model, runStats, trainer, new NullTrainReporter());
             this.saveModel();
             // Display the configuration.
             MultiLayerNetwork bestModel = runStats.getBestModel();

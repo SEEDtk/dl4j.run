@@ -41,9 +41,10 @@ public abstract class Trainer {
      * @param reader		the reader to read in the dataset
      * @param testingSet	testing set for early termination
      * @param runStats		a RunStats for the training operation
+     * @param progressMonitor
      */
     public abstract void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader,
-            DataSet testingSet, RunStats runStats);
+            DataSet testingSet, RunStats runStats, ITrainReporter progressMonitor);
 
     /**
      * @return the plural name for an event in this trainer's cycle

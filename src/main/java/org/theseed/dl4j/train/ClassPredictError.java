@@ -111,12 +111,12 @@ public class ClassPredictError implements IPredictError {
 
     @Override
     public String[] getTitles() {
-        return new String[] { "Sensitivity", "Specificity", "Fuzziness" };
+        return new String[] { "Accuracy", "Sensitivity", "Specificity", "Fuzziness" };
     }
 
     @Override
     public double[] getStats() {
-        return new double[] { this.sensitivity, this.specificity, this.fuzziness };
+        return new double[] { this.accuracy, this.sensitivity, this.specificity, this.fuzziness };
     }
 
 }

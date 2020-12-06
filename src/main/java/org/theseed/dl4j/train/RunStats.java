@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
@@ -46,10 +47,15 @@ abstract public class RunStats {
         MAE;
     }
 
+    // FIELDS
+
+    /** marking constant for a section of the trial log */
+    public static final String TRIAL_SECTION_MARKER = "******************************************************************";
+    /** marking constant for a job start in the trial log */
+    public static final String JOB_START_MARKER =     "##################################################################";
+
     /** logging facility */
     public static Logger log = LoggerFactory.getLogger(ClassTrainingProcessor.class);
-
-    // FIELDS
 
     /** TRUE if we stopped because of an error, else FALSE */
     private boolean errorStop;
@@ -298,8 +304,10 @@ abstract public class RunStats {
      * @param seconds     number of seconds spent processing this section
      * @param eventType   label to use for events
      * @param processType label to use for processing
+     *
+     * @return TRUE if we saved it, else FALSE
      */
-    abstract public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
+    abstract public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
             double seconds, String eventType, String processType);
 
     /**
@@ -313,13 +321,33 @@ abstract public class RunStats {
      */
     public static void writeTrialReport(File logFile, String label, String report) throws IOException {
         // Open the trials log in append mode and write the information about this run.
-        PrintWriter trialWriter = new PrintWriter(new FileWriter(logFile, true));
-        trialWriter.println("******************************************************************");
-        if (label != null)
-            trialWriter.print(label);
-        trialWriter.println(report);
-        trialWriter.close();
+        try (PrintWriter trialWriter = new PrintWriter(new FileWriter(logFile, true))) {
+            trialWriter.println(TRIAL_SECTION_MARKER);
+            if (label != null)
+                trialWriter.print(label);
+            trialWriter.println(report);
+        }
     }
+
+    /**
+     * Write a job marker to the trial log.
+     *
+     * @param logFile	file to contain the trial log
+     * @param type		typer of job
+     *
+     * @throws IOException
+     */
+    public static void writeTrialMarker(File logFile, String type) throws IOException {
+        // Open the trials lot in append mode and write the job marker.
+        try (PrintWriter trialWriter = new PrintWriter(new FileWriter(logFile, true))) {
+            trialWriter.println(JOB_START_MARKER);
+            // Compute the current time and date.
+            ZonedDateTime now = ZonedDateTime.now();
+            trialWriter.format("%s job at %s.%n%n", type, now.toString());
+        }
+
+    }
+
 
     /**
      * Evaluate a model against a testing set
@@ -455,14 +483,16 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
+            boolean retVal = false;
             this.evaluateModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
             if (this.newScore < this.getBestScore()
                     || newScore == this.getBestScore() && this.newAccuracy > this.getBestAccuracy()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
+                retVal = true;
             } else {
                 saveFlag = String.format("  Best score was %g in %d with accuracy %g.", this.getBestScore(),
                         this.getBestEvent(), this.getBestAccuracy());
@@ -470,6 +500,7 @@ abstract public class RunStats {
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}", this.getEventCount(),
                     eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            return retVal;
         }
 
         @Override
@@ -499,14 +530,16 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
+            boolean retVal = false;
             this.evaluateModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
             if (this.newAccuracy > this.getBestAccuracy()
                     || this.newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
+                retVal = true;
             } else {
                 saveFlag = String.format("  Best accuracy was %g in %d with score %g.", this.getBestAccuracy(),
                         this.getBestEvent(), this.getBestScore());
@@ -514,6 +547,7 @@ abstract public class RunStats {
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}", this.getEventCount(),
                     eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            return retVal;
         }
 
     }
@@ -538,14 +572,16 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
+            boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
             if (this.newScore < this.getBestScore()
                     || newScore == this.getBestScore() && this.newAccuracy > this.getBestAccuracy()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
+                retVal = true;
             } else {
                 saveFlag = String.format("  Best score was %g in %d with R-squared %g.", this.getBestScore(),
                         this.getBestEvent(), this.getBestAccuracy());
@@ -553,6 +589,7 @@ abstract public class RunStats {
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. R-squared = {}.{}", this.getEventCount(),
                     eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            return retVal;
         }
 
         @Override
@@ -582,14 +619,16 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
+            boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
             if (this.newAccuracy > this.getBestAccuracy()
                     || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
+                retVal = true;
             } else {
                 saveFlag = String.format("  Best determination coefficient was %g in %d with score %g.",
                         this.getBestAccuracy(), this.getBestEvent(), this.getBestScore());
@@ -597,6 +636,7 @@ abstract public class RunStats {
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Determination coefficient = {}.{}",
                     this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            return retVal;
         }
 
     }
@@ -621,14 +661,16 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
+            boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
             if (this.newAccuracy > this.getBestAccuracy()
                     || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
+                retVal = true;
             } else {
                 saveFlag = String.format("  Best Pearson coefficient was %g in %d with score = %g.",
                         this.getBestAccuracy(), this.getBestEvent(), this.getBestScore());
@@ -636,6 +678,7 @@ abstract public class RunStats {
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Pearson coefficient = {}.{}",
                     this.getEventCount(), eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            return retVal;
         }
 
         /**
@@ -696,14 +739,16 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
+            boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
             if (this.newAccuracy > this.getBestAccuracy()
                     || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
+                retVal = true;
             } else {
                 saveFlag = String.format("  Best accuracy was %g in %d with score = %g.", this.getBestAccuracy(),
                         this.getBestEvent(), this.getBestScore());
@@ -711,6 +756,7 @@ abstract public class RunStats {
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Accuracy = {}.{}", this.getEventCount(),
                     eventType, this.newScore, seconds, processType, this.newAccuracy, saveFlag);
+            return retVal;
         }
 
         /**
@@ -735,14 +781,16 @@ abstract public class RunStats {
         }
 
         @Override
-        public void checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
                 String eventType, String processType) {
+            boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
             String saveFlag = "";
             if (this.newAccuracy > this.getBestAccuracy()
                     || newAccuracy == this.getBestAccuracy() && this.newScore < this.getBestScore()) {
                 this.setBestModel(model.clone());
                 saveFlag = "  Model saved.";
+                retVal = true;
             } else {
                 saveFlag = String.format("  Best mean absolute error was %g in %d with score %g.",
                         -this.getBestAccuracy(), this.getBestEvent(), this.getBestScore());
@@ -750,6 +798,7 @@ abstract public class RunStats {
             }
             log.info("Score after {} {} is {}. {} seconds to process {}. Mean absolute error = {}.{}",
                     this.getEventCount(), eventType, this.newScore, seconds, processType, -this.newAccuracy, saveFlag);
+            return retVal;
         }
 
         protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {

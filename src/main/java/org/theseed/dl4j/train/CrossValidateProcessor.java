@@ -12,6 +12,7 @@ import java.util.Iterator;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.kohsuke.args4j.Argument;
@@ -25,7 +26,8 @@ import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.LineReader;
 import org.theseed.io.Shuffler;
 import org.theseed.io.TabbedLineReader;
-import org.theseed.reports.NullValidationReport;
+import org.theseed.reports.NullTrainReporter;
+import org.theseed.reports.TestValidationReport;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
 import org.theseed.utils.ParseFailureException;
@@ -76,6 +78,8 @@ public class CrossValidateProcessor implements ICommand {
     private double[] foldErrors;
     /** array of fold statistics */
     private double[][] foldStats;
+    /** progress monitor */
+    private ITrainReporter progressMonitor;
 
     // COMMAND-LINE OPTIONS
 
@@ -102,6 +106,22 @@ public class CrossValidateProcessor implements ICommand {
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
+
+    /**
+     * Create a new, blank cross-validation processor.
+     */
+    public CrossValidateProcessor() {
+        this.progressMonitor = new NullTrainReporter();
+    }
+
+    /**
+     * Create a cross-validation processor with a specific progress monitor.
+     *
+     * @param monitor	progress monitor to use for reporting
+     */
+    public CrossValidateProcessor(ITrainReporter monitor) {
+        this.progressMonitor = monitor;
+    }
 
     @Override
     public boolean parseCommand(String[] args) {
@@ -161,6 +181,7 @@ public class CrossValidateProcessor implements ICommand {
             System.err.println(e.getMessage());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
+            this.progressMonitor.showResults("Parameter error: " + e.getMessage());
         } catch (IOException e) {
             System.err.println(e.getMessage());
         }
@@ -181,6 +202,14 @@ public class CrossValidateProcessor implements ICommand {
             this.errorTracker = new RegressionStatistics(this.foldK);
             // Create the training processor.
             this.trainingProcessor = TrainingProcessor.create(this.modelType);
+            this.trainingProcessor.setModelDir(this.modelDir);
+            // Set the progress monitor.
+            this.trainingProcessor.setProgressMonitor(this.progressMonitor);
+            try {
+                RunStats.writeTrialMarker(this.trainingProcessor.getTrialFile(), "Cross-Validate");
+            } catch (IOException e) {
+                log.error("Error writing trial file: {}", e.getMessage());
+            }
             // Set the defaults.
             this.trainingProcessor.setupParameters(this.parms, this.modelDir);
             // This will hold the validation report statistic titles.
@@ -191,12 +220,15 @@ public class CrossValidateProcessor implements ICommand {
                 TabbedDataSetReader myReader = this.trainingProcessor.openReader(this.mainFile);
                 this.trainingProcessor.configureTraining(myReader);
                 // Fix the comment and run the training.
-                this.trainingProcessor.setComment(String.format("Cross-validation fold %d.", k));
+                String comment = String.format("Cross-validation fold %d.", k);
+                this.trainingProcessor.setComment(comment);
+                this.progressMonitor.showMessage(comment);
                 this.trainingProcessor.run();
                 // Compute the accuracy.  Note we reread the input.
+                TestValidationReport testErrorReport = this.trainingProcessor.getTestReporter();
                 MultiLayerNetwork model = this.trainingProcessor.getBestModel();
-                IPredictError errors = this.trainingProcessor.testPredictions(model, this.mainFile, new NullValidationReport());
-                double thisError = errors.getError();
+                IPredictError errors = this.trainingProcessor.testPredictions(model, this.mainFile, testErrorReport);
+                double thisError = testErrorReport.getError();
                 log.info("Mean error for this model was {}.", thisError);
                 if (thisError < this.bestError) {
                     this.bestIdx = k;
@@ -205,6 +237,7 @@ public class CrossValidateProcessor implements ICommand {
                     this.trainingProcessor.saveModelForced();
                     if (this.idCol != null)
                         this.saveTrainingMeta(savedTraining);
+                    this.progressMonitor.showResults(this.trainingProcessor.getResultReport());
                 } else {
                     log.info("Best so far is fold {} with error {}.", this.bestIdx, this.bestError);
                 }
@@ -241,10 +274,11 @@ public class CrossValidateProcessor implements ICommand {
                     this.errorTracker.trimmedMean(0.2), this.errorTracker.iqr()));
             // Write the report and log it.
             String report = buffer.toString();
-            RunStats.writeTrialReport(this.trainingProcessor.getTrialFile(), "Cross-Validation Report", report);
+            RunStats.writeTrialReport(this.trainingProcessor.getTrialFile(), "Summary of Cross-Validation", report);
             log.info(report);
         } catch (Exception e) {
             e.printStackTrace(System.err);
+            this.progressMonitor.showResults(ExceptionUtils.getStackTrace(e));
         }
     }
 

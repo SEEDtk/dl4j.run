@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
@@ -38,12 +39,19 @@ import org.theseed.dl4j.Regularization;
 import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.reports.IValidationReport;
+import org.theseed.reports.NullTrainReporter;
+import org.theseed.reports.TestValidationReport;
 import org.theseed.utils.FloatList;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.IntegerList;
 import org.theseed.utils.Parms;
 
 public abstract class TrainingProcessor extends LearningProcessor implements ICommand {
+
+    /**
+     *
+     */
+    private static final String UNDERFLOW_ERROR = "MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.";
 
     // PROCESSOR TYPE HANDLING
 
@@ -89,6 +97,10 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     private Activation outActivation;
     /** TRUE to save the model to the model directory, else FALSE */
     private boolean production;
+    /** reporting object for training progress */
+    private ITrainReporter progressMonitor;
+    /** result string from most recent training */
+    private String resultReport;
 
     // COMMAND-LINE OPTIONS
 
@@ -185,6 +197,16 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     public TrainingProcessor() {
         super();
         this.production = true;
+        this.progressMonitor = new NullTrainReporter();
+    }
+
+    /**
+     * Specify a new progress monitor.
+     *
+     * @param monitor	new ITrainReporter instance
+     */
+    public void setProgressMonitor(ITrainReporter monitor) {
+        this.progressMonitor = monitor;
     }
 
     /**
@@ -300,7 +322,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     * @param outFile	file to be created for future use as a configuration file
     *
     * @throws IOException */
-    protected abstract void writeParms(File outFile) throws IOException;
+    public abstract void writeParms(File outFile) throws IOException;
 
     /**
      * Set the defaults peculiar to the subclass.
@@ -323,11 +345,13 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         writer.format("## Valid training methods are %s.%n", functions);
         writer.format("--method %s\t# training set processing method%n", this.method.toString());
         writer.format("--earlyStop %d\t# early-stop useless-iteration limit%n", this.earlyStop);
-        if (this.denseLayers.isEmpty())
-            writer.format("# --widths %d\t# configure number and widths of hidden layers%n", this.reader.getWidth());
-        else
+        if (this.denseLayers.isEmpty()) {
+            writer.format("# --widths 10\t# configure number and widths of hidden layers%n");
+            writer.println("--balanced 2\t# number of hidden layers (overrides widths)");
+        } else {
             writer.format("--widths %s\t# configure hidden layers%n", this.denseLayers.original());
-        writer.println("# --balanced 2\t# number of hidden layers (overrides widths)");
+            writer.println("# --balanced 2\t# number of hidden layers (overrides widths)");
+        }
         functions = Stream.of(Regularization.Mode.values()).map(Regularization.Mode::name).collect(Collectors.joining(", "));
         writer.format("## Valid regularization modes are %s.%n", functions);
         writer.format("--regMode %s\t# regularization mode%n", this.regMode);
@@ -342,7 +366,12 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         functions = Stream.of(LossFunctionType.values()).map(LossFunctionType::name).collect(Collectors.joining(", "));
         writer.format("## Valid loss functions are %s.%n", functions);
         writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction.name());
-        writer.format("--weights %s\t# weights (by label) for computing loss function%n", this.lossWeights.original());
+        String weightString;
+        if (this.lossWeights.isEmpty())
+            weightString = "# -- weights 1.0";
+        else
+            weightString = String.format("--weights %s",  this.lossWeights.original());
+        writer.format("%s\t# weights (by label) for computing loss function%n", weightString);
         functions = Stream.of(WeightInit.values()).map(WeightInit::name).collect(Collectors.joining(", "));
         writer.format("## Valid starting weight initializations are %s.%n", functions);
         writer.format("--start %s\t# starting weight initialization method%n", this.weightInitMethod.name());
@@ -356,7 +385,8 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         commentFlag = (this.batchNormFlag ? "" : "# ");
         writer.format("%s--batch\t# use a batch normalization layer%n", commentFlag);
         commentFlag = (this.convolutions.isEmpty() ? "# " : "");
-        writer.format("%s--cnn %s\t# convolution kernel sizes%n", commentFlag, this.convolutions.original());
+        String cnn = (this.convolutions.isEmpty() ? "3" : this.convolutions.original());
+        writer.format("%s--cnn %s\t# convolution kernel sizes%n", commentFlag, cnn);
         writer.format("%s--filters %s\t# number of convolution filters to try%n", commentFlag, this.filterSizes.original());
         writer.format("%s--sub %d\t# subsampling factor%n", commentFlag, this.subFactor);
         writer.format("%s--strides %s\t# stride to use for convolution layer%n", commentFlag, this.strides.original());
@@ -368,8 +398,10 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         writer.format("--bUpdater %s\t# bias gradient updater method (uses update rate)%n", this.biasUpdateMethod.name());
         commentFlag = (this.rawMode ? "" : "# ");
         writer.format("%s--raw\t# suppress input normalization%n", commentFlag);
-        writer.format("# --name %s\t# model file name%n", this.modelName);
-        writer.format("--trials %s\t# trial log file name", this.getTrialName());
+        String modelPath = (this.modelName == null ? "model.ser" : this.modelName.toString());
+        writer.format("# --name %s\t# model file name%n", modelPath);
+        String trainPath = (this.trainingFile == null ? "training.tbl" : this.trainingFile.toString());
+        writer.format("# --input %s\t# training file name%n", trainPath);
         if (this.comment == null)
             writer.println("# --comment The comment appears in the trial log.");
         else
@@ -576,6 +608,13 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     protected abstract Activation getOutActivation();
 
     /**
+     * Specify the meta-column information.
+     *
+     * @param cols		array of metadata column names; the first is the sample ID, the last is the label (if any)
+     */
+    public abstract void setMetaCols(String[] cols);
+
+    /**
      * @return the input shape for this model
      */
     public InputType getInputShape() {
@@ -693,9 +732,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      */
     public void setupParameters(Parms parms, File modelDirectory) throws IOException {
         String[] retVal = new String[parms.size() + 1];
-        this.setSubclassDefaults();
-        this.setDefaults();
-        this.setModelDefaults();
+        setAllDefaults();
         // Process the parameters.
         List<String> parmValues = parms.get();
         parmValues.add(modelDirectory.toString());
@@ -703,6 +740,15 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         this.parseArgs(retVal);
         // Setup the training configuration.
         this.setupTraining();
+    }
+
+    /**
+     * Set all the default parameters for this processor.
+     */
+    public void setAllDefaults() {
+        this.setSubclassDefaults();
+        this.setDefaults();
+        this.setModelDefaults();
     }
 
     /**
@@ -757,26 +803,30 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             // Train the model.
             Trainer trainer = Trainer.create(this.method, this, log);
             RunStats runStats = this.createRunStats(model, trainer);
-            this.trainModel(model, runStats, trainer);
+            this.trainModel(model, runStats, trainer, this.progressMonitor);
             this.saveModel();
             // Display the configuration.
             MultiLayerNetwork bestModel = runStats.getBestModel();
             TextStringBuilder parms = displayModel(runStats);
             if (runStats.getSaveCount() == 0) {
                 parms.appendNewLine();
-                parms.appendln("MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.");
+                parms.appendln(UNDERFLOW_ERROR);
+                this.progressMonitor.showMessage(UNDERFLOW_ERROR);
                 this.clearRating();
             } else {
                 this.report(bestModel, parms, runStats);
             }
             // Add the summary.
-            parms.appendln(bestModel.summary(getInputShape()));
+            String summary = bestModel.summary(getInputShape());
+            summary = StringUtils.replace(summary, "\n", System.getProperty("line.separator"));
+            parms.appendln(summary);
             // Add the parameter dump.
             parms.append(this.dumpModel(bestModel));
             // Output the result.
             String report = parms.toString();
             log.info(report);
             RunStats.writeTrialReport(this.getTrialFile(), this.comment, report);
+            this.resultReport = this.comment + report;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -823,5 +873,42 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      * @param out	output stream to contain the report
      */
     public abstract IValidationReport getValidationReporter(OutputStream out);
+
+    /**
+     * @return the result report
+     */
+    public String getResultReport() {
+        return this.resultReport;
+    }
+
+    /**
+     * Specify a new testing size.
+     *
+     * @param size	proposed new testing size
+     */
+    public void setTestSize(int size) {
+        this.testSize = size;
+    }
+
+    /**
+     * Set the model directory.
+     *
+     * @param modelDir	proposed model directory
+     */
+    public void setModelDir(File modelDir) {
+        this.modelDir = modelDir;
+    }
+
+    /**
+     * @return the progress monitor
+     */
+    protected ITrainReporter getProgressMonitor() {
+        return this.progressMonitor;
+    }
+
+    /**
+     * @return a testing-set error calculator for this processor
+     */
+    public abstract TestValidationReport getTestReporter();
 
 }

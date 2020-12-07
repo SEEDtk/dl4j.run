@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
+import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -38,6 +39,9 @@ import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.Regularization;
 import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
 import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.io.LineReader;
+import org.theseed.io.Shuffler;
+import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.IValidationReport;
 import org.theseed.reports.NullTrainReporter;
 import org.theseed.reports.TestValidationReport;
@@ -338,6 +342,19 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         String commentFlag = "";
         commentFlag = (this.metaCols.isEmpty() ? "# " : "");
         writer.format("%s--meta %s\t# comma-delimited list of meta-data columns%n", commentFlag, this.metaCols);
+        String idName;
+        if (this.getIdCol() == null) {
+            String[] meta = StringUtils.split(this.metaCols, ',');
+            if (meta.length == 0)
+                idName = "id";
+            else
+                idName = meta[0];
+            commentFlag = "# ";
+        } else {
+            idName = this.getIdCol();
+            commentFlag = "";
+        }
+        writer.format("%s--id %s\t# ID column for validation reports%n", commentFlag, idName);
         writer.format("--iter %d\t# number of training iterations per batch%n", this.iterations);
         writer.format("--batchSize %d\t# size of each training batch%n", this.batchSize);
         writer.format("--testSize %d\t# size of the testing set, taken from the beginning of the file%n", this.testSize);
@@ -910,5 +927,95 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      * @return a testing-set error calculator for this processor
      */
     public abstract TestValidationReport getTestReporter();
+
+    /**
+     * Save the IDs from the input training file to the trained.tbl file, one per line.
+     *
+     * @throws IOException
+     */
+    public void saveTrainingMeta() throws IOException {
+        try (TabbedLineReader reader = new TabbedLineReader(this.trainingFile)) {
+            this.saveTrainingMeta(reader);
+        }
+    }
+
+    /**
+     * Save the IDs from the input training data to the trained.tbl file, one per line.
+     *
+     * @param trainList		list of strings containing the training data.
+     *
+     * @throws IOException
+     */
+    public void saveTrainingMeta(List<String> trainList) throws IOException {
+        try (TabbedLineReader reader = new TabbedLineReader(trainList)) {
+            this.saveTrainingMeta(reader);
+        }
+    }
+
+    /**
+     * Save the IDs from the training data to the trained.tbl file, one per line.
+     *
+     * @param reader	reader containing the training and testing data
+     *
+     * @throws IOException
+     */
+    protected void saveTrainingMeta(TabbedLineReader reader) throws IOException {
+        File outFile = new File(this.modelDir, "trained.tbl");
+        try (PrintWriter writer = new PrintWriter(outFile)) {
+            // Get the ID column.
+            int idColIdx = reader.findField(this.getIdCol());
+            // Skip over the testing set.
+            Iterator<TabbedLineReader.Line> iter = reader.iterator();
+            for (int i = 0; i < this.testSize; i++)
+                iter.next();
+            // Now accumulate the IDs for the training set.
+            while (iter.hasNext()) {
+                TabbedLineReader.Line line = iter.next();
+                String id = line.get(idColIdx);
+                writer.println(id);
+            }
+        }
+    }
+
+    /**
+     * Run predictions and output to a specific reporter.
+     *
+     * @param reporter	validation reporter
+     * @param inFile	input file
+     *
+     * @throws IOException
+     */
+    public void runPredictions(IValidationReport reporter, File inFile) throws IOException {
+        String idCol = this.getIdCol();
+        if (idCol != null)
+            reporter.setupIdCol(this.modelDir, idCol, this.getMetaList());
+        // Read the model.
+        MultiLayerNetwork model = this.readModel();
+        // Get the input data.
+        Shuffler<String> inputData = new Shuffler<String>(1000);
+        try (LineReader inStream = new LineReader(inFile)) {
+            inputData.addSequence(inStream);
+        }
+        log.info("{} input data lines.", inputData.size() - 1);
+        // Perform the prediction test.
+        this.testPredictions(model, inputData, reporter);
+    }
+
+    /**
+     * Initialize this model processor for a prediction run.
+     *
+     * @param modelDir	target model directory
+     *
+     * @throws IOException
+     */
+    public void initializeForPredictions(File modelDir) throws IOException {
+        this.setModelDir(modelDir);
+        File parmsPrm = new File(modelDir, "parms.prm");
+        Parms parms = new Parms(parmsPrm);
+        this.setupParameters(parms, modelDir);
+        this.checkChannelMode();
+    }
+
+
 
 }

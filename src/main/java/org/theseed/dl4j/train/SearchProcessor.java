@@ -212,6 +212,7 @@ public class SearchProcessor implements ICommand {
                     log.info("** Best iteration so far.");
                     this.progressMonitor.showResults(processor.getResultReport());
                     this.updateParmFile();
+                    processor.saveTrainingMeta();
                 } else {
                     log.info("** Best iteration was {} with rating {}.", bestIteration, bestRating);
                 }

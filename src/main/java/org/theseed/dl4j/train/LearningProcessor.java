@@ -92,6 +92,9 @@ public class LearningProcessor {
     @Option(name="-i", aliases={"--input"}, metaVar="training.tbl",
             usage="input training set file")
     protected File trainingFile;
+    /** if specified, the ID column for identifying the rows used to train */
+    @Option(name = "--id", metaVar="row_id", usage = "ID column for input rows, specified if trained.tbl is to be written")
+    private String idCol;
     /** model directory */
     @Argument(index = 0, metaVar = "modelDir", usage = "model directory", required = true)
     protected File modelDir;
@@ -145,6 +148,7 @@ public class LearningProcessor {
         this.earlyStop = 200;
         this.modelName = null;
         this.comment = null;
+        this.idCol = null;
         // Clear the rating value and the normalizer.
         this.bestRating = 0.0;
         this.normalizer = null;
@@ -611,4 +615,26 @@ public class LearningProcessor {
         return model;
     }
 
+    /**
+     * @return the ID column
+     */
+    public String getIdCol() {
+        return this.idCol;
+    }
+
+    /**
+     * Specify the ID column.
+     *
+     * @param idCol		new ID column
+     */
+    public void setIdCol(String idCol) {
+        this.idCol = idCol;
+    }
+
+    /**
+     * @return the model directory
+     */
+    public File getModelDir() {
+        return this.modelDir;
+    }
 }

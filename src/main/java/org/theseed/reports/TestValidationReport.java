@@ -102,4 +102,5 @@ public abstract class TestValidationReport implements IValidationReport {
         this.trained = LineReader.readSet(trainedFile);
 
     }
+
 }

@@ -6,7 +6,6 @@ package org.theseed.dl4j.predict;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
@@ -14,8 +13,6 @@ import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.train.TrainingProcessor;
-import org.theseed.io.LineReader;
-import org.theseed.io.Shuffler;
 import org.theseed.reports.IValidationReport;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
@@ -31,9 +28,6 @@ import org.theseed.utils.Parms;
  * -h	display command-line usage
  * -t	type of model (REGRESSION or CLASS, default CLASS)
  * -i	file containing the training/testing set (default is to use the parameter file value)
- *
- * --id		ID column of the training data; if specified, the training set IDs will be read from "trained.tbl" in the model directory,
- * 			and the training set members will be marked in the output
  *
  * --parms name of the parameter file (the default is "parms.prm" in the model directory)
  *
@@ -68,10 +62,6 @@ public class ValidateProcessor implements ICommand {
     @Option(name = "--parms", metaVar="parms.prm", usage="parameter file (if not the default)")
     private File parmFile;
 
-    /** ID column (if applicable) */
-    @Option(name = "--id", metaVar = "row_id", usage = "ID column for identifying training rows in trained.tbl")
-    private String idCol;
-
     /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
@@ -86,7 +76,6 @@ public class ValidateProcessor implements ICommand {
             this.inFile = null;
             this.modelType = TrainingProcessor.Type.CLASS;
             this.parmFile = null;
-            this.idCol = null;
             parser.parseArgument(args);
             if (this.help) {
                 parser.printUsage(System.err);
@@ -139,18 +128,8 @@ public class ValidateProcessor implements ICommand {
             processor.checkChannelMode();
             // Create the reporter.
             IValidationReport reporter = processor.getValidationReporter(System.out);
-            if (this.idCol != null)
-                reporter.setupIdCol(this.modelDir, this.idCol, processor.getMetaList());
-            // Read the model.
-            MultiLayerNetwork model = processor.readModel();
-            // Get the input data.
-            Shuffler<String> inputData = new Shuffler<String>(1000);
-            try (LineReader inStream = new LineReader(this.trainingFile)) {
-                inputData.addSequence(inStream);
-            }
-            log.info("{} input data lines.", inputData.size() - 1);
-            // Perform the prediction test.
-            processor.testPredictions(model, inputData, reporter);
+            // Perform the prediction test.  The output goes to the reporter object.
+            processor.runPredictions(reporter, this.trainingFile);
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }

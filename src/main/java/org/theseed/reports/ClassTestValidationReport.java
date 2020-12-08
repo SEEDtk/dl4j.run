@@ -6,6 +6,7 @@ package org.theseed.reports;
 import java.util.List;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.theseed.dl4j.train.ClassPredictError;
 import org.theseed.dl4j.train.IPredictError;
 
 /**
@@ -42,22 +43,10 @@ public class ClassTestValidationReport extends TestValidationReport {
     @Override
     protected void processRecord(int r, INDArray expected, INDArray output) {
         // This will be set to the expected index.
-        int e = 0;
+        int e = ClassPredictError.computeBest(expected, r);
         // This will be set to the index of the highest output value.
-        int o = 0;
-        double oVal = Double.NEGATIVE_INFINITY;
-        // Loop through the columns of the matrix.
-        int n = output.columns();
-        for (int i = 0; i < n; i++) {
-            if (expected.getDouble(r, i) == 1.0)
-                e = i;
-            double iVal = output.getDouble(r, i);
-            if (iVal > oVal) {
-                o = i;
-                oVal = iVal;
-            }
-        }
-        // Now "e" is the expected index, and "o" the predicted index.
+        int o = ClassPredictError.computeBest(output, r);
+        // Count the result.
         if (e != o)
             this.errCount++;
         this.count++;

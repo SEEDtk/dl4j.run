@@ -7,6 +7,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -55,16 +57,21 @@ public abstract class BaseValidationReport extends BaseReporter implements IVali
      * @param modelDir	model directory
      * @param idCol		ID column name
      * @param metaList	list of metadata column names
+     * @param trainList	if specified, a list containing the training set
      *
      * @throws IOException
      */
     @Override
-    public void setupIdCol(File modelDir, String idCol, List<String> metaList) throws IOException {
+    public void setupIdCol(File modelDir, String idCol, List<String> metaList, Collection<String> trainList) throws IOException {
         this.idColIdx = metaList.indexOf(idCol);
         if (this.idColIdx < 0)
             throw new IllegalArgumentException("ID column \"" + idCol + "\" not found in metadata list.");
-        File trainedFile = new File(modelDir, "trained.tbl");
-        this.trained = LineReader.readSet(trainedFile);
+        if (trainList != null) {
+            this.trained = new HashSet<String>(trainList);
+        } else {
+            File trainedFile = new File(modelDir, "trained.tbl");
+            this.trained = LineReader.readSet(trainedFile);
+        }
     }
 
     /**

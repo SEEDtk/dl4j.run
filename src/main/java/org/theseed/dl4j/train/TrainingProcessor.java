@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -835,7 +836,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             }
             // Add the summary.
             String summary = bestModel.summary(getInputShape());
-            summary = StringUtils.replace(summary, "\n", System.getProperty("line.separator"));
             parms.appendln(summary);
             // Add the parameter dump.
             parms.append(this.dumpModel(bestModel));
@@ -953,27 +953,42 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     }
 
     /**
-     * Save the IDs from the training data to the trained.tbl file, one per line.
+     * @return the IDs from the training data
+     *
+     * @param reader	reader containing the training and testing data
+     *
+     * @throws IOException
+     */
+    public List<String> getTrainingMeta(TabbedLineReader reader) throws IOException {
+        List<String> retVal = new ArrayList<String>(500);
+        // Get the ID column.
+        int idColIdx = reader.findField(this.getIdCol());
+        // Skip over the testing set.
+        Iterator<TabbedLineReader.Line> iter = reader.iterator();
+        for (int i = 0; i < this.testSize; i++)
+            iter.next();
+        // Now accumulate the IDs for the training set.
+        while (iter.hasNext()) {
+            TabbedLineReader.Line line = iter.next();
+            String id = line.get(idColIdx);
+            retVal.add(id);
+        }
+        return retVal;
+    }
+
+    /**
+     * Save the IDs from the training data to the trained.tbl file.
      *
      * @param reader	reader containing the training and testing data
      *
      * @throws IOException
      */
     protected void saveTrainingMeta(TabbedLineReader reader) throws IOException {
+        List<String> trained = getTrainingMeta(reader);
         File outFile = new File(this.modelDir, "trained.tbl");
         try (PrintWriter writer = new PrintWriter(outFile)) {
-            // Get the ID column.
-            int idColIdx = reader.findField(this.getIdCol());
-            // Skip over the testing set.
-            Iterator<TabbedLineReader.Line> iter = reader.iterator();
-            for (int i = 0; i < this.testSize; i++)
-                iter.next();
-            // Now accumulate the IDs for the training set.
-            while (iter.hasNext()) {
-                TabbedLineReader.Line line = iter.next();
-                String id = line.get(idColIdx);
+            for (String id : trained)
                 writer.println(id);
-            }
         }
     }
 
@@ -988,7 +1003,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     public void runPredictions(IValidationReport reporter, File inFile) throws IOException {
         String idCol = this.getIdCol();
         if (idCol != null)
-            reporter.setupIdCol(this.modelDir, idCol, this.getMetaList());
+            reporter.setupIdCol(this.modelDir, idCol, this.getMetaList(), null);
         // Read the model.
         MultiLayerNetwork model = this.readModel();
         // Get the input data.

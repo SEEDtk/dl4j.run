@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
@@ -23,6 +24,7 @@ import org.theseed.counters.RegressionStatistics;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.LineReader;
 import org.theseed.io.Shuffler;
+import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.NullTrainReporter;
 import org.theseed.reports.TestValidationReport;
 import org.theseed.utils.ICommand;
@@ -214,8 +216,12 @@ public class CrossValidateProcessor implements ICommand {
                 // Compute the accuracy.  Note we reread the input.
                 TestValidationReport testErrorReport = this.trainingProcessor.getTestReporter();
                 String idCol = this.trainingProcessor.getIdCol();
-                if (idCol != null)
-                    testErrorReport.setupIdCol(this.modelDir, idCol, this.trainingProcessor.getMetaList());
+                if (idCol != null) {
+                    try (TabbedLineReader reader = new TabbedLineReader(this.mainFile)) {
+                        Collection<String> trained = this.trainingProcessor.getTrainingMeta(reader);
+                        testErrorReport.setupIdCol(this.modelDir, idCol, this.trainingProcessor.getMetaList(), trained);
+                    }
+                }
                 MultiLayerNetwork model = this.trainingProcessor.getBestModel();
                 IPredictError errors = this.trainingProcessor.testPredictions(model, this.mainFile, testErrorReport);
                 double thisError = testErrorReport.getError();
@@ -250,7 +256,7 @@ public class CrossValidateProcessor implements ICommand {
             TextStringBuilder buffer = new TextStringBuilder(25 * (this.foldK + 6) + 50);
             buffer.appendNewLine();
             buffer.appendln(boundary);
-            buffer.appendln(String.format("%4s  %14s ", "Fold", "Mean Error")
+            buffer.appendln(String.format("%4s  %14s ", "Fold", "Error")
                     + Arrays.stream(statTitles).map(x -> String.format(" %14s", x)).collect(Collectors.joining()));
             buffer.appendNewLine();
             for (int k = 1; k <= this.foldK; k++) {

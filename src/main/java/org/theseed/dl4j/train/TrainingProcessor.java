@@ -746,18 +746,23 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      * @param parms				configuration parameters
      * @param modelDirectory	directory containing the model
      *
+     * @return TRUE if successful, FALSE if the parameters were invalid
+     *
      * @throws IOException
      */
-    public void setupParameters(Parms parms, File modelDirectory) throws IOException {
-        String[] retVal = new String[parms.size() + 1];
+    public boolean setupParameters(Parms parms, File modelDirectory) throws IOException {
+        String[] parmArray = new String[parms.size() + 1];
         setAllDefaults();
         // Process the parameters.
         List<String> parmValues = parms.get();
         parmValues.add(modelDirectory.toString());
-        retVal = parmValues.toArray(retVal);
-        this.parseArgs(retVal);
-        // Setup the training configuration.
-        this.setupTraining();
+        parmArray = parmValues.toArray(parmArray);
+        boolean retVal = this.parseArgs(parmArray);
+        if (retVal) {
+            // Setup the training configuration.
+            this.setupTraining();
+        }
+        return retVal;
     }
 
     /**
@@ -1021,14 +1026,18 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      *
      * @param modelDir	target model directory
      *
+     * @return TRUE if successful, FALSE if the parameters were invalid
+     *
      * @throws IOException
      */
-    public void initializeForPredictions(File modelDir) throws IOException {
+    public boolean initializeForPredictions(File modelDir) throws IOException {
         this.setModelDir(modelDir);
         File parmsPrm = new File(modelDir, "parms.prm");
         Parms parms = new Parms(parmsPrm);
-        this.setupParameters(parms, modelDir);
-        this.checkChannelMode();
+        boolean retVal = this.setupParameters(parms, modelDir);
+        if (retVal)
+            this.checkChannelMode();
+        return retVal;
     }
 
 

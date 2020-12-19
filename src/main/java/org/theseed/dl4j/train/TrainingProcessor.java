@@ -48,6 +48,7 @@ import org.theseed.reports.NullTrainReporter;
 import org.theseed.reports.TestValidationReport;
 import org.theseed.utils.FloatList;
 import org.theseed.utils.ICommand;
+import org.theseed.utils.IDescribable;
 import org.theseed.utils.IntegerList;
 import org.theseed.utils.Parms;
 
@@ -60,7 +61,14 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
 
     // PROCESSOR TYPE HANDLING
 
-    public enum Type { REGRESSION, CLASS };
+    public enum Type implements IDescribable {
+        REGRESSION, CLASS;
+
+        @Override
+        public String getDescription() {
+            return (this == CLASS ? "Classification" : "Regression");
+        }
+    };
 
     /**
      * @return a training processor of the specified type

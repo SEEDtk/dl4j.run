@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -54,20 +55,62 @@ import org.theseed.utils.Parms;
 
 public abstract class TrainingProcessor extends LearningProcessor implements ICommand {
 
-    /**
-     *
-     */
+    /** underflow error message */
     private static final String UNDERFLOW_ERROR = "MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.";
 
     // PROCESSOR TYPE HANDLING
 
     public enum Type implements IDescribable {
-        REGRESSION, CLASS;
+        REGRESSION {
+            @Override
+            public Enum<?>[] getPreferTypes() {
+                return RunStats.RegressionType.values();
+            }
+            @Override
+            public String getDescription() {
+                return "Regression";
+            }
+            @Override
+            public String getDisplayType() {
+                return "ScatterGraph";
+            }
+            @Override
+            public String resultDescription() {
+                return "Scatter Graph";
+            }
+        }, CLASS {
+            @Override
+            public Enum<?>[] getPreferTypes() {
+                return RunStats.OptimizationType.values();
+            }
+            @Override
+            public String getDescription() {
+                return "Classification";
+            }
+            @Override
+            public String getDisplayType() {
+                return "ConfusionMatrix";
+            }
+            @Override
+            public String resultDescription() {
+                return "Confusion Matrix";
+            }
+        };
 
-        @Override
-        public String getDescription() {
-            return (this == CLASS ? "Classification" : "Regression");
-        }
+        /**
+         * @return the available preference types for models of this type
+         */
+        public abstract Enum<?>[] getPreferTypes();
+
+        /**
+         * @return the result display for models of this type
+         */
+        public abstract String getDisplayType();
+
+        /**
+         * @return the description for the result display of models of this type
+         */
+        public abstract String resultDescription();
     };
 
     /**
@@ -1048,6 +1091,12 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         return retVal;
     }
 
-
+    /**
+     * @return the list of headers available for use as meta-columns
+     *
+     * @param headers	full list of column headers
+     * @param labels	list of labels for this model
+     */
+    public abstract List<String> computeAvailableHeaders(List<String> headers, Collection<String> labels);
 
 }

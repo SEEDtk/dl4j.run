@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -345,6 +346,12 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     @Override
     public TestValidationReport getTestReporter() {
         return new RegressionTestValidationReport();
+    }
+
+    @Override
+    public List<String> computeAvailableHeaders(List<String> headers, Collection<String> labels) {
+        // In a regression model, the labels correspond to input columns that cannot be used as meta-data.
+        return headers.stream().filter(x -> ! labels.contains(x)).collect(Collectors.toList());
     }
 
 }

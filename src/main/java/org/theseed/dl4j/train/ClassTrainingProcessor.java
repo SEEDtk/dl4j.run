@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -286,6 +287,12 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     @Override
     public TestValidationReport getTestReporter() {
         return new ClassTestValidationReport();
+    }
+
+    @Override
+    public List<String> computeAvailableHeaders(List<String> headers, Collection<String> labels) {
+        // Every header is available for a classification model.  One will be selected as the label column.
+        return headers;
     }
 
 }

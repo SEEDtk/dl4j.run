@@ -31,7 +31,8 @@ public interface ITrainReporter {
      * @param epoch		number of this epoch
      * @param score		score of this epoch
      * @param saved		TRUE if the epoch model was saved
+     * @throws InterruptedException
      */
-    public void displayEpoch(int epoch, double score, boolean saved);
+    public void displayEpoch(int epoch, double score, boolean saved) throws InterruptedException;
 
 }

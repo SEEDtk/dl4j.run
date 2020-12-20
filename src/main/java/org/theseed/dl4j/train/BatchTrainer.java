@@ -36,9 +36,11 @@ public class BatchTrainer extends Trainer {
      * @param testingSet	testing set for evaluation
      * @param runStats		a RunStats object describing our progress and success
      * @param monitor		ITrainReporter for progress monitoring
+     *
+     * @throws InterruptedException
      */
     @Override
-    public void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet, RunStats runStats, ITrainReporter monitor) {
+    public void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet, RunStats runStats, ITrainReporter monitor) throws InterruptedException {
         double oldScore = Double.MAX_VALUE;
         String process = processor.getIterations() + " iterations";
         while (reader.hasNext() && runStats.getEventCount() < processor.getMaxBatches() && ! runStats.isErrorStop()) {

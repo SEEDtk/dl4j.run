@@ -32,7 +32,7 @@ public class EpochTrainer extends Trainer {
     }
 
     @Override
-    public void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet, RunStats runStats, ITrainReporter monitor) {
+    public void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader, DataSet testingSet, RunStats runStats, ITrainReporter monitor) throws InterruptedException {
         // Get all of the batches into a list, up to the maximum.
         log.info("Reading training data into memory.");
         List<DataSet> batches = new ArrayList<DataSet>();

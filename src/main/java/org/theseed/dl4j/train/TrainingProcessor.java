@@ -902,6 +902,8 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             this.resultReport = this.comment + report;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 

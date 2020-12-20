@@ -42,9 +42,11 @@ public abstract class Trainer {
      * @param testingSet	testing set for early termination
      * @param runStats		a RunStats for the training operation
      * @param progressMonitor
+     *
+     * @throws InterruptedException
      */
     public abstract void trainModel(MultiLayerNetwork model, Iterator<DataSet> reader,
-            DataSet testingSet, RunStats runStats, ITrainReporter progressMonitor);
+            DataSet testingSet, RunStats runStats, ITrainReporter progressMonitor) throws InterruptedException;
 
     /**
      * @return the plural name for an event in this trainer's cycle

@@ -163,8 +163,9 @@ public class LearningProcessor {
      * @param progressMonitor 	monitor for training progress
      *
      * @throws IOException
+     * @throws InterruptedException
      */
-    public void trainModel(MultiLayerNetwork model, RunStats runStats, Trainer trainer, ITrainReporter progressMonitor) throws IOException {
+    public void trainModel(MultiLayerNetwork model, RunStats runStats, Trainer trainer, ITrainReporter progressMonitor) throws IOException, InterruptedException {
         this.reader.setBatchSize(this.batchSize);
         long start = System.currentTimeMillis();
         log.info("Starting trainer.");

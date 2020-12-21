@@ -78,6 +78,10 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             public String resultDescription() {
                 return "Scatter Graph";
             }
+            @Override
+            public int metaLabel() {
+                return 0;
+            }
         }, CLASS {
             @Override
             public Enum<?>[] getPreferTypes() {
@@ -95,6 +99,10 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             public String resultDescription() {
                 return "Confusion Matrix";
             }
+            @Override
+            public int metaLabel() {
+                return 1;
+            }
         };
 
         /**
@@ -111,6 +119,11 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
          * @return the description for the result display of models of this type
          */
         public abstract String resultDescription();
+
+        /**
+         * @return 1 if this model type has a classification label column, else 0
+         */
+        public abstract int metaLabel();
     };
 
     /**

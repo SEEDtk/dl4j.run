@@ -450,7 +450,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction.name());
         String weightString;
         if (this.lossWeights.isEmpty())
-            weightString = "# -- weights 1.0";
+            weightString = "# --weights 1.0";
         else
             weightString = String.format("--weights %s",  this.lossWeights.original());
         writer.format("%s\t# weights (by label) for computing loss function%n", weightString);

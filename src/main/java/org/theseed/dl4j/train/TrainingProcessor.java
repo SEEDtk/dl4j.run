@@ -37,6 +37,7 @@ import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
 import org.nd4j.linalg.lossfunctions.ILossFunction;
 import org.theseed.dl4j.CnnToRnnSequencePreprocessor;
+import org.theseed.dl4j.DistributedOutputStream;
 import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.Regularization;
 import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
@@ -124,6 +125,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
          * @return 1 if this model type has a classification label column, else 0
          */
         public abstract int metaLabel();
+
     };
 
     /**
@@ -287,7 +289,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         this.regFactor = 0.3;
         this.biasRate = 0.2;
         this.learnRate = 1e-3;
-        this.lossFunction = LossFunctionType.L2;
         this.trainingFile = null;
         this.regMode = Regularization.Mode.GAUSS;
         this.activationType = Activation.RELU;
@@ -1113,5 +1114,22 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      * @param labels	list of labels for this model
      */
     public abstract List<String> computeAvailableHeaders(List<String> headers, Collection<String> labels);
+
+    /**
+     * @return the relevant label column names for this model
+     */
+    public abstract List<String> getLabelCols();
+
+    /**
+     * @return the appropriate type of distributed output stream for this model
+     */
+    public abstract DistributedOutputStream getDistributor();
+
+    /**
+     * @param lossFunction 	new loss function for computing the score
+     */
+    public void setLossFunction(LossFunctionType lossFunction) {
+        this.lossFunction = lossFunction;
+    }
 
 }

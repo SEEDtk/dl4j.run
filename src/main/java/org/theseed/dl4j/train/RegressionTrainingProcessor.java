@@ -23,6 +23,8 @@ import org.nd4j.evaluation.regression.RegressionEvaluation;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.theseed.counters.RegressionStatistics;
+import org.theseed.dl4j.DistributedOutputStream;
+import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.reports.IValidationReport;
 import org.theseed.reports.RegressionTestValidationReport;
@@ -164,9 +166,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     public boolean parseCommand(String[] args) {
         boolean retVal = false;
         // Set the defaults.
-        setSubclassDefaults();
-        this.setDefaults();
-        this.setModelDefaults();
+        this.setAllDefaults();
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -196,6 +196,7 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     @Override
     public void setSubclassDefaults() {
         this.prefer = RunStats.RegressionType.SCORE;
+        this.setLossFunction(LossFunctionType.L2);
         this.bound = 0.5;
     }
 
@@ -352,6 +353,16 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     public List<String> computeAvailableHeaders(List<String> headers, Collection<String> labels) {
         // In a regression model, the labels correspond to input columns that cannot be used as meta-data.
         return headers.stream().filter(x -> ! labels.contains(x)).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<String> getLabelCols() {
+        return this.getLabels();
+    }
+
+    @Override
+    public DistributedOutputStream getDistributor() {
+        return new DistributedOutputStream.Continuous();
     }
 
 }

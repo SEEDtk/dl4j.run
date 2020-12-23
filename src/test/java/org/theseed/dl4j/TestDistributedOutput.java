@@ -14,7 +14,8 @@ import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.theseed.counters.QualityCountMap;
-import org.theseed.dl4j.train.TrainingProcessor;
+import org.theseed.dl4j.train.ClassTrainingProcessor;
+import org.theseed.dl4j.train.RegressionTrainingProcessor;
 import org.theseed.io.LineReader;
 
 /**
@@ -37,7 +38,7 @@ public class TestDistributedOutput {
             File outFile = new File("src/test/data", "data.ser");
             Map<String, String> inIDs = new HashMap<String, String>(350);
             try (LineReader dataReader = new LineReader(new File("src/test/data", "raw.data"))) {
-                DistributedOutputStream outStream = DistributedOutputStream.create(outFile, TrainingProcessor.Type.CLASS, "loc", headers);
+                DistributedOutputStream outStream = DistributedOutputStream.create(outFile, new ClassTrainingProcessor(), "loc", headers);
                 for (String line : dataReader) {
                     String[] items = StringUtils.split(line, ',');
                     inIDs.put(items[0], StringUtils.replaceChars(line, ',', '\t'));
@@ -87,7 +88,7 @@ public class TestDistributedOutput {
                 headers = StringUtils.split(line, '\t');
                 headLine = line;
                 // Now read the input and create the output.
-                DistributedOutputStream outStream = DistributedOutputStream.create(outFile, TrainingProcessor.Type.REGRESSION, "production", headers);
+                DistributedOutputStream outStream = DistributedOutputStream.create(outFile, new RegressionTrainingProcessor(), "production", headers);
                 while (dataReader.hasNext()) {
                     line = dataReader.next();
                     String[] items = StringUtils.split(line, '\t');

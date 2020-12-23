@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -19,6 +20,8 @@ import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.activations.Activation;
+import org.theseed.dl4j.DistributedOutputStream;
+import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.reports.ClassTestValidationReport;
 import org.theseed.reports.ClassValidationReport;
@@ -160,9 +163,7 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     public boolean parseCommand(String[] args) {
         boolean retVal = false;
         // Set the defaults.
-        setSubclassDefaults();
-        this.setDefaults();
-        this.setModelDefaults();
+        this.setAllDefaults();
         // Parse the command line.
         try {
             if (this.parseArgs(args)) {
@@ -183,6 +184,7 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     @Override
     public void setSubclassDefaults() {
         this.preference = RunStats.OptimizationType.ACCURACY;
+        this.setLossFunction(LossFunctionType.MCXENT);
         this.labelCol = "1";
     }
 
@@ -293,6 +295,16 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     public List<String> computeAvailableHeaders(List<String> headers, Collection<String> labels) {
         // Every header is available for a classification model.  One will be selected as the label column.
         return headers;
+    }
+
+    @Override
+    public List<String> getLabelCols() {
+        return Collections.singletonList(this.labelCol);
+    }
+
+    @Override
+    public DistributedOutputStream getDistributor() {
+        return new DistributedOutputStream.Discrete();
     }
 
 }

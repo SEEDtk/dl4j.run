@@ -43,12 +43,14 @@ public abstract class DistributedOutputStream implements Closeable, AutoCloseabl
     private String header;
     /** data line counter */
     private int outCount;
+    /** number of fields expected in each input line */
+    private int width;
 
     /**
      * Open a distributed output file.
      *
      * @param outputFile	file to receive the output
-     * @param type			type of data model (CLASS or REGRESSION)
+     * @param processor		processor model being run
      * @param label			name of the label field
      * @param headers		array of fields in the header record, containing column names
      *
@@ -56,17 +58,9 @@ public abstract class DistributedOutputStream implements Closeable, AutoCloseabl
      *
      * @throws IOException
      */
-    public static DistributedOutputStream create(File outputFile, TrainingProcessor.Type type, String label, String[] headers) throws IOException {
+    public static DistributedOutputStream create(File outputFile, TrainingProcessor processor, String label, String[] headers) throws IOException {
         // Create the stream object.
-        DistributedOutputStream retVal = null;
-        switch (type) {
-        case CLASS :
-            retVal = new Discrete();
-            break;
-        case REGRESSION :
-            retVal = new Continuous();
-            break;
-        }
+        DistributedOutputStream retVal = processor.getDistributor();
         // Find the label.
         OptionalInt labelIdx0 = IntStream.range(0, headers.length).filter(i -> headers[i].contentEquals(label)).findFirst();
         if (! labelIdx0.isPresent())
@@ -74,6 +68,7 @@ public abstract class DistributedOutputStream implements Closeable, AutoCloseabl
         retVal.labelIdx = labelIdx0.getAsInt();
         // Save the header.
         retVal.header = StringUtils.join(headers, '\t');
+        retVal.width = headers.length;
         // Open the output file.
         retVal.writer = new PrintWriter(outputFile);
         // Denote no data lines have been written.
@@ -102,8 +97,13 @@ public abstract class DistributedOutputStream implements Closeable, AutoCloseabl
      * Queue a line for output.
      *
      * @param line	array of fields in the line
+     *
+     * @throws IOException
      */
-    public void write(String[] line) {
+    public void write(String[] line) throws IOException {
+        // Verify the line length.
+        if (line.length != this.width)
+            throw new IOException("Incorrect number of fields in input line beginning with " + line[0] + ".");
         // Get the label.
         String label = line[this.labelIdx];
         // Join the line into a string.
@@ -207,7 +207,7 @@ public abstract class DistributedOutputStream implements Closeable, AutoCloseabl
         /** buffer of input lines */
         private Map<String, List<String>> lineMap;
 
-        protected Discrete() {
+        public Discrete() {
             // Create the line buffer.
             this.lineMap = new HashMap<String, List<String>>();
         }
@@ -236,7 +236,7 @@ public abstract class DistributedOutputStream implements Closeable, AutoCloseabl
         /** number of output classes to distribute */
         private static final int CONTINUOUS_CLASSES = 10;
 
-        protected Continuous() {
+        public Continuous() {
             // Create the line buffer.
             this.lineMap = new TreeMap<Double, List<String>>();
         }

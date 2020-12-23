@@ -22,7 +22,7 @@ public class NullTrainReporter implements ITrainReporter {
     }
 
     @Override
-    public void displayEpoch(int epoch, double score, boolean saved) {
+    public void displayEpoch(int epoch, double score, double rating, boolean saved) {
     }
 
 }

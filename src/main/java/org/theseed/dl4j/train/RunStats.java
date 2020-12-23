@@ -807,4 +807,11 @@ abstract public class RunStats {
 
     }
 
+    /**
+     * @return the most recent preferred rating
+     */
+    public double getRating() {
+        return this.newAccuracy;
+    }
+
 }

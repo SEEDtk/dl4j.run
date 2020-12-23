@@ -73,7 +73,7 @@ public class BatchTrainer extends Trainer {
                 log.error("Overflow/Underflow in gradient processing.  Model abandoned.");
                 runStats.error();
             } else {
-                monitor.displayEpoch(runStats.getEventCount(), newScore, saved);
+                monitor.displayEpoch(runStats.getEventCount(), newScore, runStats.getRating(), saved);
             }
         }
     }

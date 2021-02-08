@@ -44,7 +44,9 @@ abstract public class RunStats {
         /** save the model with the highest bound-accuracy */
         BOUNDED,
         /** save the model with the lowest mean absolute error */
-        MAE;
+        MAE,
+        /** save the model with the lowest mean squared error */
+        MSE;
     }
 
     // FIELDS
@@ -167,6 +169,9 @@ abstract public class RunStats {
             break;
         case MAE:
             retVal = new RunStats.ErrorAccuracy(model, processor);
+            break;
+        case MSE:
+            retVal = new RunStats.Regression2(model, processor);
             break;
         }
         retVal.eventsName = trainer.eventsName();
@@ -792,11 +797,11 @@ abstract public class RunStats {
                 saveFlag = "  Model saved.";
                 retVal = true;
             } else {
-                saveFlag = String.format("  Best mean absolute error was %g in %d with score %g.",
+                saveFlag = String.format("  Lowest mean error was %g in %d with score %g.",
                         -this.getBestAccuracy(), this.getBestEvent(), this.getBestScore());
                 this.uselessIteration();
             }
-            log.info("Score after {} {} is {}. {} seconds to process {}. Mean absolute error = {}.{}",
+            log.info("Score after {} {} is {}. {} seconds to process {}. Mean error = {}.{}",
                     this.getEventCount(), eventType, this.newScore, seconds, processType, -this.newAccuracy, saveFlag);
             return retVal;
         }
@@ -806,6 +811,23 @@ abstract public class RunStats {
         }
 
     }
+
+    /**
+     * Subclass for training models to minimize mean squared error.
+     */
+    public static class Regression2 extends ErrorAccuracy {
+
+        public Regression2(MultiLayerNetwork model, RegressionTrainingProcessor processor) {
+            super(model, processor);
+        }
+
+        @Override
+        protected double chooseAltScore(RegressionEvaluation eval, DataSet testingSet) {
+            return -eval.averageMeanSquaredError();
+        }
+
+    }
+
 
     /**
      * @return the most recent preferred rating

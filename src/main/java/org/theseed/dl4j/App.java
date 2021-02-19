@@ -11,6 +11,7 @@ import org.theseed.dl4j.predict.MultiRunProcessor;
 import org.theseed.dl4j.predict.PredictionProcessor;
 import org.theseed.dl4j.predict.ValidateProcessor;
 import org.theseed.dl4j.train.ImproveProcessor;
+import org.theseed.dl4j.train.RandomForestTrainProcessor;
 import org.theseed.dl4j.train.RegressionTrainingProcessor;
 import org.theseed.dl4j.train.SearchProcessor;
 import org.theseed.dl4j.train.ClassTrainingProcessor;
@@ -88,6 +89,10 @@ public class App
                 break;
             case "multirun" :
                 runObject = new MultiRunProcessor();
+                success = execute(runObject, args);
+                break;
+            case "rfTrain" :
+                runObject = new RandomForestTrainProcessor();
                 success = execute(runObject, args);
                 break;
             case "--help" :

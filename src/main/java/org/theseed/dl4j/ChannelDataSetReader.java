@@ -21,7 +21,6 @@ import org.theseed.io.TabbedLineReader.Line;
  * from it.  This should be a tab-delimited file with headers, but the label value MUST be in the first
  * column.  The headers are only used to fix the dimensions of the channel vectors.
  *
- * that
  * @author Bruce Parrello
  *
  */

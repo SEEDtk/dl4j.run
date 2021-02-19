@@ -3,81 +3,47 @@ package org.theseed.dl4j.train;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.util.ModelSerializer;
-import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.Option;
-import org.nd4j.evaluation.classification.ConfusionMatrix;
 import org.nd4j.evaluation.classification.Evaluation;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.dl4j.ChannelDataSetReader;
-import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.dl4j.train.Trainer.Type;
+import org.theseed.io.Shuffler;
+import org.theseed.reports.IValidationReport;
 
-public class LearningProcessor {
+public class LearningProcessor extends ModelProcessor {
 
     // FIELDS
 
-    /** input file reader */
-    protected TabbedDataSetReader reader;
-    /** array of labels */
-    private List<String> labels;
-    /** testing set */
-    private DataSet testingSet;
-    /** number of input channels */
-    private int channelCount;
-    /** TRUE if we have channel input */
-    private boolean channelMode;
-    /** best accuracy */
-    private double bestRating;
     /** normalization object */
     private DataNormalization normalizer;
     /** training results */
     private RunStats results;
-    /** list of metadata column names */
-    private List<String> metaList;
-
-
     /** logging facility */
-    protected static Logger log = LoggerFactory.getLogger(ClassTrainingProcessor.class);
+    protected static Logger log = LoggerFactory.getLogger(LearningProcessor.class);
 
-    // COMMAND LINE PARAMETER
-    /** help option */
-    @Option(name = "-h", aliases = { "--help" }, help = true)
-    protected boolean help;
+    // COMMAND-LINE OPTIONS
+
     /** number of iterations to run for each input batch */
     @Option(name = "-n", aliases = { "--iter" }, metaVar = "1000", usage = "number of iterations per batch")
     protected int iterations;
     /** size of each input batch */
     @Option(name = "-b", aliases = { "--batchSize" }, metaVar = "1000", usage = "size of each input batch")
     protected int batchSize;
-    /** size of testing set */
-    @Option(name = "-t", aliases = { "--testSize" }, metaVar = "1000", usage = "size of the testing set")
-    protected int testSize;
     /** maximum number of batches to read, or -1 to read them all */
     @Option(name = "-x", aliases = { "--maxBatches" }, metaVar = "6", usage = "maximum number of batches to read")
     protected int maxBatches;
-    /** initialization seed */
-    @Option(name = "-s", aliases = { "--seed" }, metaVar = "12765", usage = "random number seed")
-    protected int seed;
-    /** comma-delimited list of metadata column names */
-    @Option(name = "--meta", metaVar = "name,date", usage = "comma-delimited list of metadata columns")
-    protected String metaCols;
-    /** comment to display in trial log */
-    @Option(name = "--comment", metaVar = "changed bias rate", usage = "comment to display in trial log")
-    protected String comment;
     /** method to use for training */
     @Option(name = "--method", metaVar = "epoch", usage = "strategy for processing of training set")
     protected Trainer.Type method;
@@ -85,52 +51,7 @@ public class LearningProcessor {
     @Option(name = "--earlyStop", aliases = {
             "--early" }, metaVar = "100", usage = "early stop max useless iterations (0 to turn off)")
     protected int earlyStop;
-    /** model file name */
-    @Option(name = "--name", usage = "model file name (default is model.ser in model directory)")
-    protected File modelName;
-    /** input training set */
-    @Option(name="-i", aliases={"--input"}, metaVar="training.tbl",
-            usage="input training set file")
-    protected File trainingFile;
-    /** if specified, the ID column for identifying the rows used to train */
-    @Option(name = "--id", metaVar="row_id", usage = "ID column for input rows, specified if trained.tbl is to be written")
-    private String idCol;
-    /** model directory */
-    @Argument(index = 0, metaVar = "modelDir", usage = "model directory", required = true)
-    protected File modelDir;
 
-
-    /**
-     * Format a ratio for display in the evaluation metrics matrix.
-     *
-     * @param count		numerator
-     * @param total		denominator
-     *
-     * @return a formatted fraction, or an empty string if the denominator is 0
-     */
-    protected static String formatRatio(int count, int total) {
-        String retVal = "";
-        if (total > 0) {
-            retVal = String.format("%11.4f", ((double) count) / total);
-        }
-        return retVal;
-    }
-
-    /**
-     * Format a ratio for display in the evaluation metrics matrix.
-     *
-     * @param value		numerator
-     * @param total		denominator
-     *
-     * @return a formatted fraction, or an empty string if the denominator is 0
-     */
-    protected static String formatRatio(double value, int total) {
-        String retVal = "";
-        if (total > 0) {
-            retVal = String.format("%11.4f", value / total);
-        }
-        return retVal;
-    }
     /**
      * Set the defaults and perform initialization for the parameters.
      */
@@ -206,41 +127,10 @@ public class LearningProcessor {
         // Now we evaluate the model on the test set: compare the output to the actual
         // values.
         Evaluation eval = runStats.evaluateModel(bestModel, this.getTestingSet(), this.getLabels());
-        // Output the evaluation.
-        buffer.appendln(eval.stats());
-        ConfusionMatrix<Integer> matrix = eval.getConfusion();
         // We need the output and the testing set labels for comparison.
         INDArray output = runStats.getOutput();
         INDArray expect = this.getTestingSet().getLabels();
-        // Analyze the negative results.
-        int actualNegative = matrix.getActualTotal(0);
-        if (actualNegative == 0) {
-            buffer.appendln("No \"%s\" results were found.", this.getLabels().get(0));
-        } else {
-            double specificity = ((double) matrix.getCount(0, 0)) / actualNegative;
-            buffer.appendln("Model specificity is %11.4f.%n", specificity);
-        }
-        // Write the header.
-        buffer.appendln("%-11s %11s %11s %11s %11s %11s", "class", "accuracy", "sensitivity", "precision", "fallout", "MAE");
-        buffer.appendln(StringUtils.repeat('-', 71));
-        // The classification accuracy is 1 - (false negative + false positive) / total,
-        // sensitivity is true positive / actual positive, precision is true positive / predicted positive,
-        // and fall-out is false positive / actual negative.  The L2 Error is the trickiest.  It is the absolute
-        // difference between the expected values and the output, divided by the number of examples.
-        for (int i = 1; i < this.getLabels().size(); i++) {
-            String label = this.getLabels().get(i);
-            double accuracy = 1 - ((double) (matrix.getCount(0, i) + matrix.getCount(i,  0))) / this.testSize;
-            double l1_error = 0.0;
-            for (long r = 0; r < this.testSize; r++) {
-                double diff = expect.getDouble(r, i) - output.getDouble(r, i);
-                l1_error += Math.abs(diff);
-            }
-            String sensitivity = formatRatio(matrix.getCount(i, i), matrix.getActualTotal(i));
-            String precision = formatRatio(matrix.getCount(i, i), matrix.getPredictedTotal(i));
-            String fallout = formatRatio(matrix.getCount(0,  i), actualNegative);
-            String l1Error = formatRatio(l1_error, this.testSize);
-            buffer.appendln("%-11s %11.4f %11s %11s %11s %11s", label, accuracy, sensitivity, precision, fallout, l1Error);
-        }
+        produceAccuracyReport(buffer, eval, output, expect);
         // Finally, save the accuracy in case SearchProcessor is running us.
         this.bestRating = runStats.getBestRating();
     }
@@ -342,27 +232,6 @@ public class LearningProcessor {
     }
 
     /**
-     * @return the rating of the best epoch
-     */
-    public double getRating() {
-        return bestRating;
-    }
-
-    /**
-     * Store a new best rating.
-     */
-    public void setRating(double newValue) {
-        this.bestRating = newValue;
-    }
-
-    /**
-     * Reset the rating indicator to show failure to achieve a result.
-     */
-    public void clearRating() {
-        this.bestRating = Double.NEGATIVE_INFINITY;
-    }
-
-    /**
      * @return the recommended number of iterations
      */
     public int getIterations() {
@@ -391,167 +260,10 @@ public class LearningProcessor {
     }
 
     /**
-     * @return the labels
-     */
-    public List<String> getLabels() {
-        return labels;
-    }
-
-    /**
-     * @param labels the labels to set
-     */
-    public void setLabels(List<String> labels) {
-        this.labels = labels;
-    }
-
-    /**
-     * @return the channelMode
-     */
-    public boolean isChannelMode() {
-        return channelMode;
-    }
-
-    /**
-     * @param channelMode the channelMode to set
-     */
-    public void setChannelMode(boolean channelMode) {
-        this.channelMode = channelMode;
-    }
-
-    /**
-     * Initialize the reader for reading a training set.
-     *
-     * @param myReader  reader containing the training/testing data.
-     *
-     * @throws IOException
-     */
-    public void initializeReader(TabbedDataSetReader myReader) throws IOException {
-        // Determine the input type and get the appropriate reader.
-        this.checkChannelMode();
-        this.reader = myReader;
-    }
-
-    /**
-     * Determine whether or not this model uses channel input.
-     */
-    public void checkChannelMode() {
-        File channelFile = new File(this.modelDir, "channels.tbl");
-        this.channelMode = channelFile.exists();
-    }
-
-    /**
-     * Initialize a reader for reading a training/testing set.
-     *
-     * @param inFile	file containing training/testing set
-     * @param labelCol	column specifier for label column, or NULL if there is none
-     *
-     * @throws IOException
-     */
-    public TabbedDataSetReader openReader(File inFile, String labelCol) throws IOException {
-        TabbedDataSetReader retVal;
-        // Determine the input type and get the appropriate reader.
-        if (! this.channelMode) {
-            log.info("Normal input from {}.", inFile);
-            // Normal situation.  Read scalar values.
-            retVal = new TabbedDataSetReader(inFile, labelCol, this.getLabels(), this.metaList);
-            this.channelCount = 1;
-        } else {
-            // Here we have channel input.
-            File channelFile = new File(this.modelDir, "channels.tbl");
-            Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
-            ChannelDataSetReader myReader = new ChannelDataSetReader(inFile, labelCol,
-                    this.getLabels(), this.metaList, channelMap);
-            this.channelCount = myReader.getChannels();
-            retVal = myReader;
-            log.info("Channel input with {} channels from {}.", this.getChannelCount(), inFile);
-        }
-        return retVal;
-    }
-
-    /**
-     * @return a reader for reading a training/testing set from a list of in-memory strings.
-     *
-     * @param strings		in-memory list of strings (including the header line)
-     * @param labelCol		column specifier for label column, or NULL if there is none
-     *
-     * @throws IOException
-     */
-    public TabbedDataSetReader openReader(List<String> strings, String labelCol) throws IOException {
-        TabbedDataSetReader retVal;
-        // Determine the input type and get the appropriate reader.
-        if (! this.channelMode) {
-            // Normal situation.  Read scalar values.
-            retVal = new TabbedDataSetReader(strings, labelCol, this.getLabels(), this.metaList);
-            this.channelCount = 1;
-        } else {
-            // Here we have channel input.
-            File channelFile = new File(this.modelDir, "channels.tbl");
-            Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
-            ChannelDataSetReader myReader = new ChannelDataSetReader(strings, labelCol,
-                    this.getLabels(), this.metaList, channelMap);
-            this.channelCount = myReader.getChannels();
-            retVal = myReader;
-        }
-        return retVal;
-    }
-    /**
-     * Read in the testing set.
-     */
-    protected void readTestingSet() {
-        // Get the testing set.
-        log.info("Reading testing set (size = {}).", this.testSize);
-        this.reader.setBatchSize(this.testSize);
-        this.testingSet = this.reader.next();
-        if (! this.reader.hasNext()) {
-            log.warn("Training set contains only test data. Batch size = {} but {} records in input.",
-                    this.testSize, this.getTestingSet().numExamples());
-            throw new IllegalArgumentException("No training data.  Testing set size was " + this.testSize + " but only "
-                    + this.getTestingSet().numExamples() + " records in input.");
-        }
-    }
-
-    /**
-     * Set up the training file for processing.
-     *
-     * @param myReader	reader containing the data to use for training
-     * @oaram labelCol	column specifier for the label column, or NULL if there is none
-     *
-     * @throws FileNotFoundException
-     * @throws IOException
-     */
-    public void setupTraining(String labelCol) throws FileNotFoundException, IOException {
-        if (! this.modelDir.isDirectory()) {
-            throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
-        } else {
-            // Read in the labels from the label file.
-            File labelFile = new File(this.modelDir, "labels.txt");
-            if (! labelFile.exists())
-                throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
-            this.setLabels(TabbedDataSetReader.readLabels(labelFile));
-            log.info("{} labels read from label file.", this.getLabels().size());
-            // Parse the metadata column list.
-            this.metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
-            // Finally, we initialize the input to get the label and metadata columns handled.
-            if (this.trainingFile == null) {
-                this.trainingFile = new File(this.modelDir, "training.tbl");
-                if (! this.trainingFile.exists())
-                    throw new FileNotFoundException("Training file " + this.trainingFile + " not found.");
-            }
-        }
-    }
-
-    /**
      * @return the testingSet
      */
     public DataSet getTestingSet() {
         return testingSet;
-    }
-
-    /**
-     * @return the channelCount
-     */
-    public int getChannelCount() {
-        return channelCount;
     }
 
     /**
@@ -572,33 +284,10 @@ public class LearningProcessor {
     }
 
     /**
-     * @return the trial file name
-     */
-    public File getTrialFile() {
-        return new File(this.modelDir, "trials.log");
-    }
-
-    /**
      * @return the trial file base name
      */
     protected String getTrialName() {
         return "trials.log";
-    }
-
-    /**
-     * Specify the comment string for reports.
-     *
-     * @param comment 	the comment to set
-     */
-    public void setComment(String comment) {
-        this.comment = comment;
-    }
-
-    /**
-     * @return the list of meta-data column names
-     */
-    public List<String> getMetaList() {
-        return this.metaList;
     }
 
     /**
@@ -616,26 +305,20 @@ public class LearningProcessor {
         return model;
     }
 
-    /**
-     * @return the ID column
-     */
-    public String getIdCol() {
-        return this.idCol;
+    @Override
+    public void setupTraining() throws IOException {
     }
 
-    /**
-     * Specify the ID column.
-     *
-     * @param idCol		new ID column
-     */
-    public void setIdCol(String idCol) {
-        this.idCol = idCol;
+    @Override
+    public void setAllDefaults() {
     }
 
-    /**
-     * @return the model directory
-     */
-    public File getModelDir() {
-        return this.modelDir;
+    @Override
+    protected void testModelPredictions(IValidationReport reporter, Shuffler<String> inputData) throws IOException {
     }
+
+    @Override
+    protected void initializeModelParameters() throws FileNotFoundException, IOException {
+    }
+
 }

@@ -3,17 +3,13 @@ package org.theseed.dl4j.train;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
@@ -44,107 +40,18 @@ import org.theseed.dl4j.RnnSequenceToFeedForwardPreProcessor;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.LineReader;
 import org.theseed.io.Shuffler;
-import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.IValidationReport;
-import org.theseed.reports.NullTrainReporter;
 import org.theseed.reports.TestValidationReport;
 import org.theseed.utils.FloatList;
-import org.theseed.utils.ICommand;
-import org.theseed.utils.IDescribable;
 import org.theseed.utils.IntegerList;
 import org.theseed.utils.Parms;
 
-public abstract class TrainingProcessor extends LearningProcessor implements ICommand {
+public abstract class TrainingProcessor extends LearningProcessor implements ITrainingProcessor {
 
     /** underflow error message */
     private static final String UNDERFLOW_ERROR = "MODEL FAILED DUE TO OVERFLOW OR UNDERFLOW.";
 
-    // PROCESSOR TYPE HANDLING
 
-    public enum Type implements IDescribable {
-        REGRESSION {
-            @Override
-            public Enum<?>[] getPreferTypes() {
-                return RunStats.RegressionType.values();
-            }
-            @Override
-            public String getDescription() {
-                return "Regression";
-            }
-            @Override
-            public String getDisplayType() {
-                return "ScatterGraph";
-            }
-            @Override
-            public String resultDescription() {
-                return "Scatter Graph";
-            }
-            @Override
-            public int metaLabel() {
-                return 0;
-            }
-        }, CLASS {
-            @Override
-            public Enum<?>[] getPreferTypes() {
-                return RunStats.OptimizationType.values();
-            }
-            @Override
-            public String getDescription() {
-                return "Classification";
-            }
-            @Override
-            public String getDisplayType() {
-                return "ConfusionMatrix";
-            }
-            @Override
-            public String resultDescription() {
-                return "Confusion Matrix";
-            }
-            @Override
-            public int metaLabel() {
-                return 1;
-            }
-        };
-
-        /**
-         * @return the available preference types for models of this type
-         */
-        public abstract Enum<?>[] getPreferTypes();
-
-        /**
-         * @return the result display for models of this type
-         */
-        public abstract String getDisplayType();
-
-        /**
-         * @return the description for the result display of models of this type
-         */
-        public abstract String resultDescription();
-
-        /**
-         * @return 1 if this model type has a classification label column, else 0
-         */
-        public abstract int metaLabel();
-
-    };
-
-    /**
-     * @return a training processor of the specified type
-     *
-     * @param type	type of training-- regressions or classification
-     */
-    public static TrainingProcessor create(Type type) {
-        TrainingProcessor retVal = null;
-        switch (type) {
-        case REGRESSION :
-            retVal = new RegressionTrainingProcessor();
-            break;
-        case CLASS :
-            retVal = new ClassTrainingProcessor();
-            break;
-        }
-        return retVal;
-    }
 
     // FIELDS
 
@@ -166,10 +73,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     private InputType inputShape;
     /** output layer activation function */
     private Activation outActivation;
-    /** TRUE to save the model to the model directory, else FALSE */
-    private boolean production;
-    /** reporting object for training progress */
-    private ITrainReporter progressMonitor;
     /** result string from most recent training */
     private String resultReport;
 
@@ -265,21 +168,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         this.lossWeights = new FloatList(weightString);
     }
 
-    public TrainingProcessor() {
-        super();
-        this.production = true;
-        this.progressMonitor = new NullTrainReporter();
-    }
-
-    /**
-     * Specify a new progress monitor.
-     *
-     * @param monitor	new ITrainReporter instance
-     */
-    public void setProgressMonitor(ITrainReporter monitor) {
-        this.progressMonitor = monitor;
-    }
-
     /**
      * Set the parameter defaults related to model creation.
      */
@@ -370,22 +258,17 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         }
         // Save the regularization configuration.
         this.regulizer = new Regularization(this.regMode, this.regFactor);
-        // Compute the model file name if it is defaulting.
-        if (this.modelName == null)
-            this.modelName = new File(this.modelDir, "model.ser");
         // Correct the early stop value.
         if (this.earlyStop == 0) this.earlyStop = Integer.MAX_VALUE;
         // Correct the Nesterov learning rate for the weight updater.  The default here is 0.1, not 1e-3
         this.realLearningRate = this.learnRate;
         if (this.weightUpdateMethod == GradientUpdater.Type.NESTEROVS)
             this.realLearningRate *= 100;
-        // Write out the comment.
-        if (this.comment != null)
-            log.info("*** {}", this.comment);
+        // Initialize the low-level computed parameters.
+        initializeBaseModelParms();
         // If the user asked for a configuration file, write it here.
         if (this.parmFile != null) writeParms(this.parmFile);
     }
-
 
     /** Write all the parameters to a configuration file.
     *
@@ -406,24 +289,9 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
      */
     protected void writeModelParms(PrintWriter writer) {
         String commentFlag = "";
-        commentFlag = (this.metaCols.isEmpty() ? "# " : "");
-        writer.format("%s--meta %s\t# comma-delimited list of meta-data columns%n", commentFlag, this.metaCols);
-        String idName;
-        if (this.getIdCol() == null) {
-            String[] meta = StringUtils.split(this.metaCols, ',');
-            if (meta.length == 0)
-                idName = "id";
-            else
-                idName = meta[0];
-            commentFlag = "# ";
-        } else {
-            idName = this.getIdCol();
-            commentFlag = "";
-        }
-        writer.format("%s--id %s\t# ID column for validation reports%n", commentFlag, idName);
+        writeBaseModelParms(writer);
         writer.format("--iter %d\t# number of training iterations per batch%n", this.iterations);
         writer.format("--batchSize %d\t# size of each training batch%n", this.batchSize);
-        writer.format("--testSize %d\t# size of the testing set, taken from the beginning of the file%n", this.testSize);
         String functions = Stream.of(Trainer.Type.values()).map(Trainer.Type::name).collect(Collectors.joining(", "));
         writer.format("## Valid training methods are %s.%n", functions);
         writer.format("--method %s\t# training set processing method%n", this.method.toString());
@@ -445,7 +313,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             writer.format("--maxBatches %d\t# maximum number of input batches to process%n", this.maxBatches);
         writer.format("--learnRate %e\t# weight learning rate%n", this.learnRate);
         writer.format("--updateRate %g\t# bias update coefficient%n", this.biasRate);
-        writer.format("--seed %d\t# random number initialization seed%n", this.seed);
         functions = Stream.of(LossFunctionType.values()).map(LossFunctionType::name).collect(Collectors.joining(", "));
         writer.format("## Valid loss functions are %s.%n", functions);
         writer.format("--lossFun %s\t# loss function for scoring output%n", this.lossFunction.name());
@@ -481,14 +348,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         writer.format("--bUpdater %s\t# bias gradient updater method (uses update rate)%n", this.biasUpdateMethod.name());
         commentFlag = (this.rawMode ? "" : "# ");
         writer.format("%s--raw\t# suppress input normalization%n", commentFlag);
-        String modelPath = (this.modelName == null ? "model.ser" : this.modelName.toString());
-        writer.format("# --name %s\t# model file name%n", modelPath);
-        String trainPath = (this.trainingFile == null ? "training.tbl" : this.trainingFile.toString());
-        writer.format("# --input %s\t# training file name%n", trainPath);
-        if (this.comment == null)
-            writer.println("# --comment The comment appears in the trial log.");
-        else
-            writer.format("--comment %s%n", this.comment);
     }
 
     /**
@@ -712,13 +571,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     }
 
     /**
-     * Denote that the model should not be saved to disk.
-     */
-    public void setSearchMode() {
-        this.production = false;
-    }
-
-    /**
      * If a model was created and we are in production mode, save it to the model directory.
      *
      * @throws IOException
@@ -778,18 +630,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         reporter.close();
         // Return the evaluation of the predictions.
         return errorPredictor;
-    }
-
-    /**
-     * Initialize for training.
-     *
-     * @throws IOException
-     */
-    protected void initializeTraining() throws IOException {
-        // Read in the testing set.
-        readTestingSet();
-        // Set up the common parameters.
-        initializeModelParameters();
     }
 
     /**
@@ -891,7 +731,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             // Train the model.
             Trainer trainer = Trainer.create(this.method, this, log);
             RunStats runStats = this.createRunStats(model, trainer);
-            this.trainModel(model, runStats, trainer, this.progressMonitor);
+            this.trainModel(model, runStats, trainer, this.getProgressMonitor());
             this.saveModel();
             // Display the configuration.
             MultiLayerNetwork bestModel = runStats.getBestModel();
@@ -899,7 +739,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
             if (runStats.getSaveCount() == 0) {
                 parms.appendNewLine();
                 parms.appendln(UNDERFLOW_ERROR);
-                this.progressMonitor.showMessage(UNDERFLOW_ERROR);
+                this.getProgressMonitor().showMessage(UNDERFLOW_ERROR);
                 this.clearRating();
             } else {
                 this.report(bestModel, parms, runStats);
@@ -940,30 +780,6 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     public abstract TabbedDataSetReader openReader(File inFile) throws IOException;
 
     /**
-     * Parse the parameters in the specified array.  This has to be done using a subclass override, because
-     * the parameter parser requires that it be called from a class that has all the parameters accessible.
-     *
-     * @param theseParms	array of parameters
-     *
-     * @return TRUE if successful, FALSE if the command should be aborted
-     */
-    public abstract boolean parseArgs(String[] theseParms);
-
-    /**
-     * Setup the label and metadata columns.
-     *
-     * @throws IOException
-     */
-    public abstract void setupTraining() throws IOException;
-
-    /**
-     * @return a validation reporter for this training processor
-     *
-     * @param out	output stream to contain the report
-     */
-    public abstract IValidationReport getValidationReporter(OutputStream out);
-
-    /**
      * @return the result report
      */
     public String getResultReport() {
@@ -971,98 +787,9 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     }
 
     /**
-     * Specify a new testing size.
-     *
-     * @param size	proposed new testing size
-     */
-    public void setTestSize(int size) {
-        this.testSize = size;
-    }
-
-    /**
-     * Set the model directory.
-     *
-     * @param modelDir	proposed model directory
-     */
-    public void setModelDir(File modelDir) {
-        this.modelDir = modelDir;
-    }
-
-    /**
-     * @return the progress monitor
-     */
-    protected ITrainReporter getProgressMonitor() {
-        return this.progressMonitor;
-    }
-
-    /**
      * @return a testing-set error calculator for this processor
      */
     public abstract TestValidationReport getTestReporter();
-
-    /**
-     * Save the IDs from the input training file to the trained.tbl file, one per line.
-     *
-     * @throws IOException
-     */
-    public void saveTrainingMeta() throws IOException {
-        try (TabbedLineReader reader = new TabbedLineReader(this.trainingFile)) {
-            this.saveTrainingMeta(reader);
-        }
-    }
-
-    /**
-     * Save the IDs from the input training data to the trained.tbl file, one per line.
-     *
-     * @param trainList		list of strings containing the training data.
-     *
-     * @throws IOException
-     */
-    public void saveTrainingMeta(List<String> trainList) throws IOException {
-        try (TabbedLineReader reader = new TabbedLineReader(trainList)) {
-            this.saveTrainingMeta(reader);
-        }
-    }
-
-    /**
-     * @return the IDs from the training data
-     *
-     * @param reader	reader containing the training and testing data
-     *
-     * @throws IOException
-     */
-    public List<String> getTrainingMeta(TabbedLineReader reader) throws IOException {
-        List<String> retVal = new ArrayList<String>(500);
-        // Get the ID column.
-        int idColIdx = reader.findField(this.getIdCol());
-        // Skip over the testing set.
-        Iterator<TabbedLineReader.Line> iter = reader.iterator();
-        for (int i = 0; i < this.testSize; i++)
-            iter.next();
-        // Now accumulate the IDs for the training set.
-        while (iter.hasNext()) {
-            TabbedLineReader.Line line = iter.next();
-            String id = line.get(idColIdx);
-            retVal.add(id);
-        }
-        return retVal;
-    }
-
-    /**
-     * Save the IDs from the training data to the trained.tbl file.
-     *
-     * @param reader	reader containing the training and testing data
-     *
-     * @throws IOException
-     */
-    protected void saveTrainingMeta(TabbedLineReader reader) throws IOException {
-        List<String> trained = getTrainingMeta(reader);
-        File outFile = new File(this.modelDir, "trained.tbl");
-        try (PrintWriter writer = new PrintWriter(outFile)) {
-            for (String id : trained)
-                writer.println(id);
-        }
-    }
 
     /**
      * Run predictions and output to a specific reporter.
@@ -1076,35 +803,40 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
         String idCol = this.getIdCol();
         if (idCol != null)
             reporter.setupIdCol(this.modelDir, idCol, this.getMetaList(), null);
-        // Read the model.
-        MultiLayerNetwork model = this.readModel();
         // Get the input data.
         Shuffler<String> inputData = new Shuffler<String>(1000);
         try (LineReader inStream = new LineReader(inFile)) {
             inputData.addSequence(inStream);
         }
         log.info("{} input data lines.", inputData.size() - 1);
+        testModelPredictions(reporter, inputData);
+    }
+
+    /**
+     * Run predictions for the current model and output to a specific reporter.
+     *
+     * @param reporter		validation reporter
+     * @param inputData		input strings
+     *
+     * @throws IOException
+     */
+    protected void testModelPredictions(IValidationReport reporter, Shuffler<String> inputData) throws IOException {
+        // Read the model.
+        MultiLayerNetwork model = this.readModel();
         // Perform the prediction test.
         this.testPredictions(model, inputData, reporter);
     }
 
     /**
-     * Initialize this model processor for a prediction run.
+     * Compute the size-dependent default parameters
      *
-     * @param modelDir	target model directory
-     *
-     * @return TRUE if successful, FALSE if the parameters were invalid
-     *
-     * @throws IOException
+     * @param inputSize		number of rows in input training file
+     * @param featureCols	number of input columns
      */
-    public boolean initializeForPredictions(File modelDir) throws IOException {
-        this.setModelDir(modelDir);
-        File parmsPrm = new File(modelDir, "parms.prm");
-        Parms parms = new Parms(parmsPrm);
-        boolean retVal = this.setupParameters(parms, modelDir);
-        if (retVal)
-            this.checkChannelMode();
-        return retVal;
+    public void setSizeParms(int inputSize, int featureCols) {
+        int testSize = inputSize / 10;
+        if (testSize < 1) testSize = 1;
+        this.setTestSize(testSize);
     }
 
     /**
@@ -1131,5 +863,20 @@ public abstract class TrainingProcessor extends LearningProcessor implements ICo
     public void setLossFunction(LossFunctionType lossFunction) {
         this.lossFunction = lossFunction;
     }
+
+    /**
+     * @return the prediction error from the best model found during a validation or search
+     *
+     * @param mainFile			list of testing-set records
+     * @param testErrorReport	reporting facility for validation
+     *
+     * @throws IOException
+     */
+    public IPredictError testBestPredictions(List<String> mainFile, IValidationReport testErrorReport) throws IOException {
+        MultiLayerNetwork model = this.getBestModel();
+        IPredictError retVal = this.testPredictions(model, mainFile, testErrorReport);
+        return retVal;
+    }
+
 
 }

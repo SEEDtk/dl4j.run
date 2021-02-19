@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.StringUtils;
-import org.theseed.dl4j.train.TrainingProcessor;
+import org.theseed.dl4j.train.ITrainingProcessor;
 import org.theseed.io.Shuffler;
 
 /**
@@ -58,7 +58,7 @@ public abstract class DistributedOutputStream implements Closeable, AutoCloseabl
      *
      * @throws IOException
      */
-    public static DistributedOutputStream create(File outputFile, TrainingProcessor processor, String label, String[] headers) throws IOException {
+    public static DistributedOutputStream create(File outputFile, ITrainingProcessor processor, String label, String[] headers) throws IOException {
         // Create the stream object.
         DistributedOutputStream retVal = processor.getDistributor();
         // Find the label.

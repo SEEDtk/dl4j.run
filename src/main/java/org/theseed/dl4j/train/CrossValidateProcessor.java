@@ -13,7 +13,6 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.text.TextStringBuilder;
-import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
@@ -59,7 +58,7 @@ public class CrossValidateProcessor implements ICommand {
     /** list of strings in training/testing set */
     private Shuffler<String> mainFile;
     /** processor being validated */
-    private TrainingProcessor trainingProcessor;
+    private ITrainingProcessor trainingProcessor;
     /** error tracker */
     RegressionStatistics errorTracker;
     /** testing set size */
@@ -85,7 +84,7 @@ public class CrossValidateProcessor implements ICommand {
 
     /** type of model */
     @Option(name="--type", aliases={"-t"}, usage="type of model")
-    private TrainingProcessor.Type modelType;
+    private ModelType modelType;
 
     /** number of folds to test */
     @Option(name = "-k", aliases = { "--folds" }, metaVar = "5", usage = "Number of folds to use for cross-validation")
@@ -123,7 +122,7 @@ public class CrossValidateProcessor implements ICommand {
         try {
             this.help = false;
             this.foldK = 10;
-            this.modelType = TrainingProcessor.Type.CLASS;
+            this.modelType = ModelType.CLASS;
             this.parmFile = null;
             parser.parseArgument(args);
             if (this.help) {
@@ -190,7 +189,7 @@ public class CrossValidateProcessor implements ICommand {
             this.foldStats = new double[this.foldK + 1][];
             this.errorTracker = new RegressionStatistics(this.foldK);
             // Create the training processor.
-            this.trainingProcessor = TrainingProcessor.create(this.modelType);
+            this.trainingProcessor = ModelType.create(this.modelType);
             this.trainingProcessor.setModelDir(this.modelDir);
             // Set the progress monitor.
             this.trainingProcessor.setProgressMonitor(this.progressMonitor);
@@ -222,8 +221,7 @@ public class CrossValidateProcessor implements ICommand {
                         testErrorReport.setupIdCol(this.modelDir, idCol, this.trainingProcessor.getMetaList(), trained);
                     }
                 }
-                MultiLayerNetwork model = this.trainingProcessor.getBestModel();
-                IPredictError errors = this.trainingProcessor.testPredictions(model, this.mainFile, testErrorReport);
+                IPredictError errors = this.trainingProcessor.testBestPredictions(this.mainFile, testErrorReport);
                 double thisError = testErrorReport.getError();
                 log.info("Mean error for this model was {}.", thisError);
                 if (thisError < this.bestError) {

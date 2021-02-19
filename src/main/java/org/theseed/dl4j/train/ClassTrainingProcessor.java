@@ -16,8 +16,6 @@ import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
-import org.kohsuke.args4j.CmdLineException;
-import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.activations.Activation;
 import org.theseed.dl4j.DistributedOutputStream;
@@ -246,30 +244,10 @@ public class ClassTrainingProcessor extends TrainingProcessor implements IComman
     }
 
     @Override
-    public boolean parseArgs(String[] theseParms) {
-        boolean retVal = false;
-        CmdLineParser parser = new CmdLineParser(this);
-        try {
-            parser.parseArgument(theseParms);
-            if (this.help)
-                parser.printUsage(System.err);
-            else
-                retVal = true;
-        } catch (CmdLineException e) {
-            System.err.println(e.getMessage());
-            // For parameter errors, we display the command usage.
-            parser.printUsage(System.err);
-            this.getProgressMonitor().showResults("Error in parameters: " + e.getMessage());
-        }
-        return retVal;
-    }
-
-    @Override
     public void setupTraining() throws IOException {
         this.setupTraining(this.labelCol);
     }
 
-    @Override
     public IValidationReport getValidationReporter(OutputStream out) {
         return new ClassValidationReport(out);
     }

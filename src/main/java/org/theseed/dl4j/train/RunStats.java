@@ -312,7 +312,7 @@ abstract public class RunStats {
      *
      * @return TRUE if we saved it, else FALSE
      */
-    abstract public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor,
+    abstract public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, ModelProcessor processor,
             double seconds, String eventType, String processType);
 
     /**
@@ -488,7 +488,7 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, ModelProcessor processor, double seconds,
                 String eventType, String processType) {
             boolean retVal = false;
             this.evaluateModel(model, testingSet, processor.getLabels());
@@ -535,7 +535,7 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, ModelProcessor processor, double seconds,
                 String eventType, String processType) {
             boolean retVal = false;
             this.evaluateModel(model, testingSet, processor.getLabels());
@@ -577,7 +577,7 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, ModelProcessor processor, double seconds,
                 String eventType, String processType) {
             boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
@@ -624,7 +624,7 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, ModelProcessor processor, double seconds,
                 String eventType, String processType) {
             boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
@@ -666,7 +666,7 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, ModelProcessor processor, double seconds,
                 String eventType, String processType) {
             boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
@@ -744,7 +744,7 @@ abstract public class RunStats {
          * @param processType label to use for processing
          */
         @Override
-        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, ModelProcessor processor, double seconds,
                 String eventType, String processType) {
             boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());
@@ -786,7 +786,7 @@ abstract public class RunStats {
         }
 
         @Override
-        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, LearningProcessor processor, double seconds,
+        public boolean checkModel(MultiLayerNetwork model, DataSet testingSet, ModelProcessor processor, double seconds,
                 String eventType, String processType) {
             boolean retVal = false;
             this.scoreModel(model, testingSet, processor.getLabels());

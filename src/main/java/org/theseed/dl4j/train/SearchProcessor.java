@@ -75,7 +75,7 @@ public class SearchProcessor implements ICommand {
 
     /** type of model */
     @Option(name="--type", aliases={"-t"}, usage="type of model")
-    private TrainingProcessor.Type modelType;
+    private ModelType modelType;
 
     /** if specified, all models will be saved */
     @Option(name = "--saveAll", usage = "save all models")
@@ -114,7 +114,7 @@ public class SearchProcessor implements ICommand {
         try {
             this.help = false;
             this.saveAll = false;
-            this.modelType = TrainingProcessor.Type.CLASS;
+            this.modelType = ModelType.CLASS;
             this.parmFile = null;
             parser.parseArgument(args);
             if (this.help) {
@@ -145,7 +145,7 @@ public class SearchProcessor implements ICommand {
     @Override
     public void run() {
         // We loop through the parameter combinations, calling the training processor.
-        TrainingProcessor processor = TrainingProcessor.create(modelType);
+        ITrainingProcessor processor = ModelType.create(modelType);
         processor.setModelDir(this.modelDir);
         // Suppress saving of the model unless we force it.
         processor.setSearchMode();

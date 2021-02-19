@@ -12,7 +12,8 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.dl4j.train.TrainingProcessor;
+import org.theseed.dl4j.train.ITrainingProcessor;
+import org.theseed.dl4j.train.ModelType;
 import org.theseed.reports.IValidationReport;
 import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
@@ -52,7 +53,7 @@ public class ValidateProcessor implements ICommand {
 
     /** type of model */
     @Option(name="--type", aliases={"-t"}, usage="type of model")
-    private TrainingProcessor.Type modelType;
+    private ModelType modelType;
 
     /** input training file (if not the one in the parm file */
     @Option(name = "-i", aliases = { "--input" }, metaVar = "training.tbl", usage = "input training file (overrides parms.prm if specified)")
@@ -74,7 +75,7 @@ public class ValidateProcessor implements ICommand {
         try {
             this.help = false;
             this.inFile = null;
-            this.modelType = TrainingProcessor.Type.CLASS;
+            this.modelType = ModelType.CLASS;
             this.parmFile = null;
             parser.parseArgument(args);
             if (this.help) {
@@ -121,7 +122,7 @@ public class ValidateProcessor implements ICommand {
         try {
             log.info("Input will be read from {}.", this.trainingFile);
             // Create the training processor.
-            TrainingProcessor processor = TrainingProcessor.create(this.modelType);
+            ITrainingProcessor processor = ModelType.create(this.modelType);
             // Set up the parameters.
             processor.setupParameters(this.parms, this.modelDir);
             // Verify channel mode.

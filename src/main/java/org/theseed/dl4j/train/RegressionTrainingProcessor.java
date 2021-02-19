@@ -243,8 +243,8 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
                 if (Math.round(o) == e) closeCount++;
             }
             rStats.finish();
-            String accuracy = LearningProcessor.formatRatio(goodCount, this.testSize);
-            String boundAcc = LearningProcessor.formatRatio(closeCount, this.testSize);
+            String accuracy = ModelProcessor.formatRatio(goodCount, this.testSize);
+            String boundAcc = ModelProcessor.formatRatio(closeCount, this.testSize);
             // Now we compute the clean average error.
             buffer.appendln("%-21s %11.4f %11.4f %11.4f %11.4f %11s %11s %11.4f %11.4f", label, eval.meanAbsoluteError(i),
                     eval.meanSquaredError(i), eval.pearsonCorrelation(i), eval.rSquared(i), accuracy, boundAcc,
@@ -308,30 +308,10 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
     }
 
     @Override
-    public boolean parseArgs(String[] theseParms) {
-        boolean retVal = false;
-        CmdLineParser parser = new CmdLineParser(this);
-        try {
-            parser.parseArgument(theseParms);
-            if (this.help)
-                parser.printUsage(System.err);
-            else
-                retVal = true;
-        } catch (CmdLineException e) {
-            System.err.println(e.getMessage());
-            // For parameter errors, we display the command usage.
-            parser.printUsage(System.err);
-            this.getProgressMonitor().showResults("Error in parameters: " + e.getMessage());
-        }
-        return retVal;
-    }
-
-    @Override
     public void setupTraining() throws IOException {
         this.setupTraining(null);
     }
 
-    @Override
     public IValidationReport getValidationReporter(OutputStream out) {
         return new RegressionValidationReport(out);
     }

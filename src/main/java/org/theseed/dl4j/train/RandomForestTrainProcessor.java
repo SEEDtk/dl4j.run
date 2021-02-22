@@ -189,7 +189,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
             reportBuilder.appendln("---------------------------------------------------------");
             Iterator<Impact> iter = cols.iterator();
             int count = 0;
-            while (iter.hasNext() && count < 10) {
+            while (iter.hasNext() && count < 20) {
                 Impact item = iter.next();
                 reportBuilder.appendln("%12.4f %s", item.getImpact(), item.getName());
                 count++;

@@ -160,6 +160,12 @@ public class DecisionTree implements Serializable {
             this.right.addImpact(vector);
         }
 
+        @Override
+        public String toString() {
+            return "ChoiceNode@" + Integer.toHexString(System.identityHashCode(this)) +
+                    "[iFeature=" + this.iFeature + ", limit=" + this.limit + "]";
+        }
+
     }
 
     /**
@@ -194,6 +200,12 @@ public class DecisionTree implements Serializable {
         @Override
         protected void addImpact(INDArray vector) {
             // A leaf has no impact.
+        }
+
+        @Override
+        public String toString() {
+            return "LeafNode@" + Integer.toHexString(System.identityHashCode(this)) +
+                    "[iClass=" + this.iClass + "]";
         }
 
     }
@@ -426,9 +438,11 @@ public class DecisionTree implements Serializable {
      */
     public int predict(INDArray features, int idx) {
         Node current = root;
+        log.debug("Predicting row {} using tree {}.", idx, current);
         while (current instanceof ChoiceNode) {
             ChoiceNode curr = (ChoiceNode) current;
             current = curr.choose(features, idx);
+            log.debug("Node {} chosen.", current);
         }
         LeafNode curr = (LeafNode) current;
         return curr.getiClass();

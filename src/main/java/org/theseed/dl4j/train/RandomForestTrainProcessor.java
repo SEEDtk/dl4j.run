@@ -120,6 +120,10 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     @Option(name = "--maxDepth", metaVar = "10", usage = "maximum tree depth")
     private int maxDepth;
 
+    /** size of each input batch */
+    @Option(name = "-b", aliases = { "--batchSize" }, metaVar = "1000", usage = "size of each input batch")
+    protected int batchSize;
+
     /** number of samples to use for each tree's subset */
     @Option(name = "--sampleSize", metaVar = "100", usage = "sample size to use for each tree")
     private int sampleSize;
@@ -158,9 +162,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     @Override
     public void run() {
         try {
-            // Read the testing set.
-            this.readTestingSet();
-            // Convert it to decision tree format.
+            // Convert the testing set to decision tree format.
             RandomForestTrainProcessor.flattenDataSet(this.testingSet);
             // Now we read the training set.
             DataSet trainingSet = this.readTrainingSet();
@@ -186,13 +188,13 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
                             "=========================== Parameters ===========================%n" +
                             "     maxFeatures = %12d, minSplit      = %12d%n" +
                             "     nEstimators = %12d, maxDepth      = %12d%n" +
-                            "     sampleSize  = %12d%n" +
+                            "     sampleSize  = %12d, batchSize     = %12d%n" +
                             "     --------------------------------------------------------%n" +
                             "     Randomization strategy is %s with seed %d.%n" +
                             "     %s minutes to train model.",
-                           this.modelName.getCanonicalPath(),
-                           this.maxFeatures, this.minSplit, this.nEstimators, this.maxDepth,
-                           this.sampleSize, this.method.toString(), this.seed, duration);
+                           this.modelName.getCanonicalPath(), this.maxFeatures, this.minSplit,
+                           this.nEstimators, this.maxDepth, this.sampleSize, this.batchSize,
+                           this.method.toString(), this.seed, duration);
             this.produceAccuracyReport(reportBuilder, accuracy, predictions, expectations);
             this.bestRating = accuracy.accuracy();
             reportBuilder.appendNewLine();
@@ -384,6 +386,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
        writer.format("--nEstimators %d\t# number of trees in the forest%n", this.nEstimators);
        writer.format("--maxDepth %d\t# maximum allowable tree depth%n", this.maxDepth);
        writer.format("--sampleSize %d\t# number of examples to use in each subsample%n", this.sampleSize);
+       writer.format("--batchSize %d\t# size of each input batch%n", this.batchSize);
        writer.close();
    }
 
@@ -413,6 +416,8 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
             throws IOException {
         // Get access to the input data.
         TabbedDataSetReader batches = this.openReader(mainFile, this.labelCol);
+        // Set the batch size.
+        batches.setBatchSize(this.batchSize);
         // Initialize the error predictor.
         IPredictError retVal = new ClassPredictError(this.getLabels());
         // Initialize the output report.

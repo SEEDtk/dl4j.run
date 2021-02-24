@@ -22,6 +22,7 @@ import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DurationFormatUtils;
+import org.apache.commons.math3.stat.inference.OneWayAnova;
 import org.apache.commons.text.TextStringBuilder;
 import org.kohsuke.args4j.Option;
 import org.nd4j.evaluation.classification.Evaluation;
@@ -29,15 +30,17 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.counters.Rating;
 import org.theseed.dl4j.DistributedOutputStream;
-import org.theseed.dl4j.Impact;
 import org.theseed.dl4j.TabbedDataSetReader;
+import org.theseed.dl4j.decision.DecisionTree;
 import org.theseed.dl4j.decision.RandomForest;
 import org.theseed.io.Shuffler;
 import org.theseed.reports.ClassTestValidationReport;
 import org.theseed.reports.ClassValidationReport;
 import org.theseed.reports.IValidationReport;
 import org.theseed.reports.TestValidationReport;
+import org.theseed.utils.ParseFailureException;
 
 /**
  * This is the base class for anything that trains a model.  Unlike LearningProcessor, the model does
@@ -84,6 +87,8 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     private RandomForest.Parms hParms;
     /** result report */
     private String resultReport;
+    /** impact report */
+    private SortedSet<Rating<String>> impact;
 
     // COMMAND-LINE OPTIONS
 
@@ -128,10 +133,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
         try {
             if (this.parseArgs(args)) {
                 this.setupTraining();
-                // Verify the model directory and read the labels.
-                TabbedDataSetReader myReader = this.openReader(this.trainingFile, this.labelCol);
-                // Configure the model for training.
-                this.configureTraining(myReader);
+                configureReader();
                 // We made it this far, we can run the application.
                 retVal = true;
             }
@@ -139,6 +141,18 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
             System.err.println(e.getMessage());
         }
         return retVal;
+    }
+
+    /**
+     * Prepare the training reader to read the training file.
+     *
+     * @throws IOException
+     */
+    private void configureReader() throws IOException {
+        // Verify the model directory and read the labels.
+        TabbedDataSetReader myReader = this.openReader(this.trainingFile, this.labelCol);
+        // Configure the model for training.
+        this.configureTraining(myReader);
     }
 
     @Override
@@ -182,16 +196,16 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
             this.produceAccuracyReport(reportBuilder, accuracy, predictions, expectations);
             this.bestRating = accuracy.accuracy();
             reportBuilder.appendNewLine();
-            INDArray impact = this.model.computeImpact();
-            SortedSet<Impact> cols = this.computeImpactList(impact);
+            INDArray impactArray = this.model.computeImpact();
+            this.impact = this.computeImpactList(impactArray);
             // Output the 10 most impactful columns.
             reportBuilder.appendln("Impact       Column Name");
             reportBuilder.appendln("---------------------------------------------------------");
-            Iterator<Impact> iter = cols.iterator();
+            Iterator<Rating<String>> iter = this.impact.iterator();
             int count = 0;
             while (iter.hasNext() && count < 20) {
-                Impact item = iter.next();
-                reportBuilder.appendln("%12.4f %s", item.getImpact(), item.getName());
+                Rating<String> item = iter.next();
+                reportBuilder.appendln("%12.4f %s", item.getRating(), item.getKey());
                 count++;
             }
             reportBuilder.appendNewLine();
@@ -210,7 +224,19 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
      *
      * @param impact	impact vector, indexed by input column
      */
-    private SortedSet<Impact> computeImpactList(INDArray impact) {
+    private SortedSet<Rating<String>> computeImpactList(INDArray impact) {
+        List<String> colNames = getColNames();
+        // Now we fill in the output set.
+        SortedSet<Rating<String>> retVal = new TreeSet<Rating<String>>();
+        for (int i = 0; i < impact.columns(); i++)
+            retVal.add(new Rating<String>(colNames.get(i), impact.getDouble(i)));
+        return retVal;
+    }
+
+    /**
+     * @return the list of column names (in order) for this model's input columns
+     */
+    private List<String> getColNames() {
         // The tricky part here is we need to compute the column names.  We go through the feature
         // columns one by one.  If we are in channel mode, each channel element gets a number suffix.
         List<String> featureNames = this.reader.getFeatureNames();
@@ -222,10 +248,61 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
             else
                 IntStream.rangeClosed(1, channels).mapToObj(i -> String.format("%s|%02d", col, i)).forEach(x -> colNames.add(x));
         }
-        // Now we fill in the output set.
-        SortedSet<Impact> retVal = new TreeSet<Impact>();
-        for (int i = 0; i < impact.columns(); i++)
-            retVal.add(new Impact(colNames.get(i), impact.getDouble(i)));
+        return colNames;
+    }
+
+    /**
+     * Compute the ANOVA F-measure for each input column.  This is an indicator of the degree to which each input
+     * column's values sort according to the classification.  We do this for both the training and testing sets.
+     *
+     * @param modelDir		model directory
+     *
+     * @return a sorted set of ratings for the input columns
+     *
+     * @throws IOException
+     * @throws ParseFailureException
+     */
+    public SortedSet<Rating<String>> computeAnovaFValues(File modelDir) throws IOException, ParseFailureException {
+        SortedSet<Rating<String>> retVal = new TreeSet<Rating<String>>();
+        if (! this.initializeForPredictions(modelDir))
+            throw new ParseFailureException("Invalid parameter file in " + modelDir + ".");
+        else {
+            OneWayAnova computer = new OneWayAnova();
+            // Get the nubmer of labels.
+            int nLabels = this.getLabels().size();
+            // Set up the training file reader.
+            this.configureReader();
+            // Get the column names.
+            List<String> colNames = this.getColNames();
+            // We need to merge the training set with the testing set.  Note the order doesn't matter.
+            DataSet fullSet = this.readTrainingSet();
+            List<DataSet> rows = fullSet.asList();
+            rows.addAll(this.testingSet.asList());
+            // Now separate the dataset rows by classification.
+            List<List<DataSet>> groups = IntStream.range(0, nLabels).mapToObj(i -> new ArrayList<DataSet>(rows.size()))
+                    .collect(Collectors.toList());
+            for (DataSet row : rows) {
+                int labelIdx = DecisionTree.bestLabel(row);
+                groups.get(labelIdx).add(row);
+            }
+            // Build a double[] for each classification.  We use this to build the anova input data.
+            List<double[]> arrays = IntStream.range(0, nLabels).mapToObj(j -> new double[groups.get(j).size()])
+                    .collect(Collectors.toList());
+            // For each column, compute the Anova.
+            for (int i = 0; i < colNames.size(); i++) {
+                for (int j = 0; j < nLabels; j++) {
+                    List<DataSet> group = groups.get(j);
+                    double[] array = arrays.get(j);
+                    for (int k = 0; k < group.size(); k++) {
+                        INDArray features = group.get(k).getFeatures();
+                        array[k] = features.getDouble(i);
+                    }
+                }
+                // Now we have a double[] for each class.  From this we get the F-measure.
+                double rating = computer.anovaFValue(arrays);
+                retVal.add(new Rating<String>(colNames.get(i), rating));
+            }
+        }
         return retVal;
     }
 
@@ -364,6 +441,14 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     @Override
     public void saveModelForced() throws IOException {
         this.model.save(this.modelName);
+        // Also, store the full impact report in the output directory.
+        File impactFile = new File(this.modelDir, "impact.tbl");
+        try (PrintWriter impactStream = new PrintWriter(impactFile)) {
+            impactStream.println("col_name\tinfo_gain");
+            for (Rating<String> colItem : this.impact)
+                impactStream.format("%s\t%14.6f%n", colItem.getKey(), colItem.getRating());
+        }
+
     }
 
     @Override

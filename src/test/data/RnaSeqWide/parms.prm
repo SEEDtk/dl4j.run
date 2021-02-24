@@ -1,0 +1,15 @@
+--col prod_level	# input column for class name
+# --comment The comment appears in the trial log.
+--id sample_id	# ID column for validation reports
+# --input training.tbl	# training file name
+--maxDepth 4276	# maximum allowable tree depth
+--maxFeatures 171	# number of features to check at each tree node
+--meta sample_id,production,growth	# comma-delimited list of meta-data columns
+# Valid randomization methods are BALANCED, UNIQUE, RANDOM.
+--method RANDOM	# randomization method for picking subsamples
+--minSplit 2	# minimum number of examples allowed in a splitting tree node
+--nEstimators 50	# number of trees in the forest
+# --name model.ser	# model file name
+--sampleSize 10	# number of examples to use in each subsample
+--seed 526682	# random number initialization seed
+--testSize 5	# size of the testing set, taken from the beginning of the file

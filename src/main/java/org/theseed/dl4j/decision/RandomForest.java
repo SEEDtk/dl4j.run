@@ -48,6 +48,8 @@ public class RandomForest implements Serializable {
     private int nFeatures;
     /** randomizer for selecting training sets */
     private transient IRandomizer randomizer;
+    /** split point finder */
+    private transient SplitPointFinder finder;
 
     /**
      * type of randomization
@@ -292,11 +294,13 @@ public class RandomForest implements Serializable {
      *
      * @param dataset	training set to use
      * @param parms		hyper-parameters
+     * @param finder	split point finder
      */
-    public RandomForest(DataSet dataset, Parms parms) {
+    public RandomForest(DataSet dataset, Parms parms, SplitPointFinder finder) {
         this.nLabels = dataset.numOutcomes();
         this.nFeatures = dataset.numInputs();
         this.parms = parms;
+        this.finder = finder;
         this.randomizer = parms.getRandomizer();
         // Initialize the randomizer.
         this.randomizer.initializeData(this.nLabels, this.parms.getNumExamples(), dataset);
@@ -323,7 +327,7 @@ public class RandomForest implements Serializable {
         // Get the sampling to use for training this tree.
         DataSet sample = this.randomizer.getData(seed1);
         // Build the decision tree.
-        DecisionTree retVal = new DecisionTree(sample, this.parms, seed2);
+        DecisionTree retVal = new DecisionTree(sample, this.parms, seed2, this.finder);
         return retVal;
     }
 

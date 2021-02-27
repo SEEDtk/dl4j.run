@@ -47,6 +47,8 @@ public abstract class ModelProcessor {
     protected TabbedDataSetReader reader;
     /** array of labels */
     private List<String> labels;
+    /** label column specification (NULL if none) */
+    private String labelSpec;
     /** testing set */
     protected DataSet testingSet;
     /** number of input channels */
@@ -471,6 +473,8 @@ public abstract class ModelProcessor {
                 throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
             this.setLabels(TabbedDataSetReader.readLabels(labelFile));
             log.info("{} labels read from label file.", this.getLabels().size());
+            // Save the label column specification.
+            this.labelSpec = labelCol;
             // Parse the metadata column list.
             this.metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
             // Finally, we initialize the input to get the label and metadata columns handled.
@@ -682,6 +686,28 @@ public abstract class ModelProcessor {
         String retVal = "";
         if (total > 0) {
             retVal = String.format("%11.4f", ((double) count) / total);
+        }
+        return retVal;
+    }
+
+    /**
+     * @return the label column index from the parameter file.
+     *
+     * @param modelDir	model directory
+     *
+     * @throws IOException
+     */
+    public int getLabelIndex(File modelDir) throws IOException {
+        int retVal;
+        // Set up the parameters without reading the testing set.
+        this.initializeForPredictions(modelDir);
+        // Get the label column name.
+        String labelName = this.labelSpec;
+        if (labelName == null)
+            labelName = this.labels.get(0);
+        // Read the training file headers to get the column index.
+        try (TabbedLineReader reader = new TabbedLineReader(this.trainingFile)) {
+            retVal = reader.findField(labelName);
         }
         return retVal;
     }

@@ -34,8 +34,5 @@ public class TestAnova {
         }
         assertThat(ratings.size(), greaterThan(2000));
     }
-    // FIELDS
-    // TODO data members for TestAnova
 
-    // TODO constructors and methods for TestAnova
 }

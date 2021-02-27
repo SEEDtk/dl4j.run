@@ -251,4 +251,13 @@ public interface ITrainingProcessor extends ICommand {
      * @throws IOException
      */
     public void saveTrainingMeta() throws IOException;
+
+    /**
+     * @return the label column index
+     *
+     * @param parmFile	parameter file
+     *
+     * @throws IOException
+     */
+    public int getLabelIndex(File parmFile) throws IOException;
 }

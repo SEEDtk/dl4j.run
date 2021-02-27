@@ -95,6 +95,10 @@ public class App
                 runObject = new RandomForestTrainProcessor();
                 success = execute(runObject, args);
                 break;
+            case "anova" :
+                runObject = new AnovaProcessor();
+                success = execute(runObject, args);
+                break;
             case "--help" :
             case "-h" :
             case "help" :
@@ -126,6 +130,7 @@ public class App
         System.out.println("train        train a classification model");
         System.out.println("validate	 test a model against a model training set");
         System.out.println("xvalidate    cross-validate a model training set");
+        System.out.println("anova		 display ANOVA F-measure");
     }
 
     /**

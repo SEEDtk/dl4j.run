@@ -35,6 +35,7 @@ import org.theseed.dl4j.DistributedOutputStream;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.dl4j.decision.DecisionTree;
 import org.theseed.dl4j.decision.RandomForest;
+import org.theseed.dl4j.decision.SplitPointFinder;
 import org.theseed.io.Shuffler;
 import org.theseed.reports.ClassTestValidationReport;
 import org.theseed.reports.ClassValidationReport;
@@ -72,6 +73,7 @@ import org.theseed.utils.ParseFailureException;
  * --minSplit		minimum number of examples allowed in a choice node
  * --maxDepth		maximum tree depth
  * --sampleSize		number of examples to use for each tree's subset
+ * --splitMethod	split point determination method (default MEAN)
  *
  * @author Bruce Parrello
  *
@@ -128,6 +130,10 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     @Option(name = "--sampleSize", metaVar = "100", usage = "sample size to use for each tree")
     private int sampleSize;
 
+    /** method for determining split point */
+    @Option(name = "--splitMethod", usage = "method for determining split point in choice nodes")
+    private SplitPointFinder.Type splitMethod;
+
     @Override
     public boolean parseCommand(String[] args) {
         boolean retVal = false;
@@ -169,7 +175,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
             // Build the model from the training set.
             long start = System.currentTimeMillis();
             log.info("Building the model.");
-            this.model = new RandomForest(trainingSet, this.hParms);
+            this.model = new RandomForest(trainingSet, this.hParms, this.splitMethod.create(this));
             // Test the accuracy.
             log.info("Testing the model.");
             // Create a label array for output.
@@ -351,6 +357,8 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
         this.modelName = null;
         this.comment = null;
         this.idCol = null;
+        this.batchSize = 100;
+        this.splitMethod = SplitPointFinder.Type.MEAN;
         // Clear the rating value.
         this.bestRating = 0.0;
     }
@@ -387,6 +395,9 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
        writer.format("--maxDepth %d\t# maximum allowable tree depth%n", this.maxDepth);
        writer.format("--sampleSize %d\t# number of examples to use in each subsample%n", this.sampleSize);
        writer.format("--batchSize %d\t# size of each input batch%n", this.batchSize);
+       typeList = Stream.of(SplitPointFinder.Type.values()).map(SplitPointFinder.Type::name).collect(Collectors.joining(", "));
+       writer.format("# Valid split point finder methods are %s.%n", typeList);
+       writer.format("--splitMethod %s\t# split point determination method for choice nodes%n", this.splitMethod.toString());
        writer.close();
    }
 

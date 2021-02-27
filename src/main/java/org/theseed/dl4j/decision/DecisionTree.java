@@ -4,6 +4,8 @@
 package org.theseed.dl4j.decision;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 import java.util.stream.IntStream;
 
@@ -39,6 +41,8 @@ public class DecisionTree implements Serializable {
     private transient Random randomizer;
     /** log base 2 factor */
     private static double LOG2BASE = Math.log(2.0);
+    /** split point finder to use for computing the split point of a feature */
+    private transient SplitPointFinder splitFinder;
     /** object ID for serialization */
     private static final long serialVersionUID = 4184229432605504478L;
 
@@ -215,12 +219,14 @@ public class DecisionTree implements Serializable {
      *
      * @param dataset	dataset to use for training the tree
      * @param parms		hyperparameter specification
+     * @param finder	split point finder
      */
-    public DecisionTree(DataSet dataset, RandomForest.Parms parms, long randSeed) {
+    public DecisionTree(DataSet dataset, RandomForest.Parms parms, long randSeed, SplitPointFinder finder) {
         this.nClasses = dataset.numOutcomes();
         this.nFeatures = dataset.numInputs();
         this.parms = parms;
         this.randomizer = new Random(randSeed);
+        this.splitFinder = finder;
         // Compute the number of features to use in each tree.
         int arraySize = parms.getNumFeatures();
         if (this.nFeatures < arraySize) arraySize = this.nFeatures;
@@ -228,8 +234,10 @@ public class DecisionTree implements Serializable {
         int[] features = this.featuresToUse(arraySize);
         // Compute the starting entropy.
         double entropy = DecisionTree.entropy(dataset);
+        // Split the dataset into rows.
+        List<DataSet> rows = dataset.asList();
         // Create the root node.
-        this.root = this.computeNode(dataset, 0, features, entropy);
+        this.root = this.computeNode(rows, 0, features, entropy);
     }
 
     /**
@@ -273,7 +281,7 @@ public class DecisionTree implements Serializable {
      *
      * @param labelSum	array of label counts
      */
-    private static double labelEntropy(INDArray labelSum) {
+    public static double labelEntropy(INDArray labelSum) {
         double total = labelSum.sumNumber().doubleValue();
         double retVal = 0.0;
         for (int i = 0; i < labelSum.columns(); i++) {
@@ -288,88 +296,48 @@ public class DecisionTree implements Serializable {
     /**
      * Recursively compute the tree node from the specified list of features.
      *
-     * @param dataset			dataset of rows to be classified by this node
+     * @param rows				dataset rows to be classified by this node
      * @param depth				depth of the node in question
      * @param featuresToUse		array of feature indices to use
      * @param entropy			entropy of the set
      *
      * @return a node for deciding this set
      */
-    private Node computeNode(DataSet dataset, int depth, int[] featuresToUse, double entropy) {
+    private Node computeNode(List<DataSet> rows, int depth, int[] featuresToUse, double entropy) {
         Node retVal;
         // Is this a leaf?
-        if (dataset.numExamples() <= this.parms.getLeafLimit() || entropy <= 0.0 || depth >= this.parms.getMaxDepth()) {
+        if (rows.size() <= this.parms.getLeafLimit() || entropy <= 0.0 || depth >= this.parms.getMaxDepth()) {
             // Yes.  Assign the best label value.
-            retVal = createLeaf(dataset, entropy);
+            retVal = createLeaf(rows, entropy);
         } else {
             // Loop through the features, looking for the one that creates the greatest entropy decrease.
-            INDArray features = dataset.getFeatures();
-            INDArray labels = dataset.getLabels();
             // These variables contain the data we need to split the dataset for the children.
-            double bestMean = 0.0;
-            int bestFeature = -1;
-            double bestLeftEntropy = 0.0;
-            double bestRightEntropy = 0.0;
-            int bestLeftCount = 0;
-            int bestRightCount = 0;
-            double bestGain = 0.0;
+            Splitter best = Splitter.NULL;
             // Loop through the features left to examine.
             for (int i : featuresToUse) {
-                double mean = features.getColumn(i).meanNumber().doubleValue();
-                INDArray leftLabels = Nd4j.zeros(this.nClasses);
-                INDArray rightLabels = Nd4j.zeros(this.nClasses);
-                for (int j = 0; j < features.rows(); j++) {
-                    INDArray labelArray = labels.getRow(j);
-                    if (features.getDouble(j, i) <= mean)
-                        leftLabels.addi(labelArray);
-                    else
-                        rightLabels.addi(labelArray);
-                }
-                // Now compute the information gain.  Note we skip if one of the branches is empty.
-                double leftCount = leftLabels.sumNumber().doubleValue();
-                double rightCount = rightLabels.sumNumber().doubleValue();
-                if (leftCount > 0.0 && rightCount > 0.0) {
-                    double leftEntropy = labelEntropy(leftLabels);
-                    double rightEntropy = labelEntropy(rightLabels);
-                    double totalCount = leftCount + rightCount;
-                    double gain = entropy - (leftEntropy * leftCount + rightEntropy * rightCount) / totalCount;
-                    // If this is our biggest gain, save it.
-                    if (gain > bestGain) {
-                        bestMean = mean;
-                        bestFeature = i;
-                        bestLeftEntropy = leftEntropy;
-                        bestRightEntropy = rightEntropy;
-                        bestGain = gain;
-                        bestLeftCount = (int) leftCount;
-                        bestRightCount = (int) rightCount;
-                    }
-                }
+                Splitter test = this.splitFinder.computeSplit(i, this.nClasses, rows, entropy);
+                if (test.compareTo(best) < 0)
+                    best = test;
             }
             // If we were not able to gain anything, this is a leaf.
-            if (bestFeature < 0)
-                retVal = this.createLeaf(dataset, entropy);
+            if (best == Splitter.NULL)
+                retVal = this.createLeaf(rows, entropy);
             else {
                 // Here we can split the node.
-                ChoiceNode newNode = new ChoiceNode(bestFeature, bestMean, entropy, bestGain);
+                ChoiceNode newNode = best.createNode(entropy);
                 // Split the incoming dataset.
-                INDArray leftFeatures = Nd4j.zeros(bestLeftCount, this.nFeatures);
-                INDArray leftLabels = Nd4j.zeros(bestLeftCount, this.nClasses);
-                INDArray rightFeatures = Nd4j.zeros(bestRightCount, this.nFeatures);
-                INDArray rightLabels = Nd4j.zeros(bestRightCount, this.nClasses);
-                int leftCount = 0;
-                int rightCount = 0;
-                for (int i = 0; i < dataset.numExamples(); i++) {
-                    if (features.getDouble(i, bestFeature) <= bestMean)
-                        putRow(leftFeatures, leftLabels, leftCount++, dataset, i);
+                List<DataSet> left = new ArrayList<DataSet>(best.getLeftCount());
+                List<DataSet> right = new ArrayList<DataSet>(best.getRightCount());
+                for (DataSet row : rows) {
+                    if (best.splitsLeft(row))
+                        left.add(row);
                     else
-                        putRow(rightFeatures, rightLabels, rightCount++, dataset, i);
+                        right.add(row);
                 }
-                DataSet leftDataset = new DataSet(leftFeatures, leftLabels);
-                DataSet rightDataset = new DataSet(rightFeatures, rightLabels);
                 // Create the left node.
-                newNode.setLeft(this.computeNode(leftDataset, depth + 1, featuresToUse, bestLeftEntropy));
+                newNode.setLeft(this.computeNode(left, depth + 1, featuresToUse, best.getLeftEntropy()));
                 // Create the right node.  Here we can reuse the old bitmap.
-                newNode.setRight(this.computeNode(rightDataset, depth + 1, featuresToUse, bestRightEntropy));
+                newNode.setRight(this.computeNode(right, depth + 1, featuresToUse, best.getRightEntropy()));
                 // Return the new node.
                 retVal = newNode;
             }
@@ -378,28 +346,47 @@ public class DecisionTree implements Serializable {
     }
 
     /**
-     * Store a row from the dataset into the feature and label arrays.
+     * @return the mean value of the specified feature in the list of dataset rows
      *
-     * @param features	output feature array
-     * @param labels	output label array
-     * @param i			output row index
-     * @param dataset	input dataset
-     * @param i2		input row index
+     * @param rows	list of dataset rows
+     * @param i		column index of the desired feature
      */
-    protected static void putRow(INDArray features, INDArray labels, int i, DataSet dataset, int i2) {
-        features.putRow(i, dataset.getFeatures().getRow(i2));
-        labels.putRow(i, dataset.getLabels().getRow(i2));
+    public static double featureMean(List<DataSet> rows, int i) {
+        int count = 0;
+        double retVal = 0.0;
+        for (DataSet row : rows) {
+            retVal += row.getFeatures().getDouble(i);
+            count++;
+        }
+        if (count > 0) retVal /= count;
+        return retVal;
     }
 
     /**
      * @return a leaf node for a dataset
      *
-     * @param dataset	dataset represented by the leaf
+     * @param rows	dataset represented by the leaf
      * @param entropy	entropy of the dataset
      */
-    private Node createLeaf(DataSet dataset, double entropy) {
-        int label = DecisionTree.bestLabel(dataset);
+    private Node createLeaf(List<DataSet> rows, double entropy) {
+        int label = DecisionTree.bestLabel(rows);
         return new LeafNode(label, entropy);
+    }
+
+    /**
+     * @return the index of the most popular label in the list of dataset rows
+     *
+     * @param rows	list of dataset rows
+     */
+    private static int bestLabel(List<DataSet> rows) {
+        int retVal = 0;
+        if (rows.size() > 0) {
+            INDArray labelSums = rows.get(0).getLabels().dup();
+            for (int i = 1; i < rows.size(); i++)
+                labelSums.addi(rows.get(i).getLabels());
+            retVal = computeBest(labelSums);
+        }
+        return retVal;
     }
 
     /**
@@ -409,6 +396,16 @@ public class DecisionTree implements Serializable {
      */
     public static int bestLabel(DataSet dataset) {
         INDArray labelSums = getLabelSums(dataset);
+        int retVal = computeBest(labelSums);
+        return retVal;
+    }
+
+    /**
+     * @return the highest value in a vector of label sums
+     *
+     * @param labelSums		vector to search
+     */
+    private static int computeBest(INDArray labelSums) {
         int retVal = 0;
         double max = labelSums.getDouble(0);
         for (int i = 1; i < labelSums.columns(); i++) {
@@ -438,11 +435,9 @@ public class DecisionTree implements Serializable {
      */
     public int predict(INDArray features, int idx) {
         Node current = root;
-        log.debug("Predicting row {} using tree {}.", idx, current);
         while (current instanceof ChoiceNode) {
             ChoiceNode curr = (ChoiceNode) current;
             current = curr.choose(features, idx);
-            log.debug("Node {} chosen.", current);
         }
         LeafNode curr = (LeafNode) current;
         return curr.getiClass();

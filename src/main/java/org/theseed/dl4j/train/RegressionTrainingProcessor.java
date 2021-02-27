@@ -345,4 +345,10 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
         return new DistributedOutputStream.Continuous();
     }
 
+    @Override
+    public int getLabelIndex(File modelDir) {
+        // There is no class label column for this type of model.
+        return -1;
+    }
+
 }

@@ -25,6 +25,8 @@ import org.slf4j.LoggerFactory;
 import org.theseed.dl4j.decision.DecisionTree;
 import org.theseed.dl4j.decision.RandomForest;
 import org.theseed.dl4j.decision.RandomForest.Method;
+import org.theseed.dl4j.decision.SequentialSplitPointFinder;
+import org.theseed.dl4j.decision.SplitPointFinder;
 import org.theseed.dl4j.train.ClassPredictError;
 
 /**
@@ -67,7 +69,7 @@ public class TestDecisionTrees {
         INDArray features = readSet.getFeatures();
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms();
-        DecisionTree tree = new DecisionTree(readSet, parms, 142857);
+        DecisionTree tree = new DecisionTree(readSet, parms, 142857, new SplitPointFinder.Mean());
         // Create a label array for output.
         INDArray predictions = Nd4j.zeros(readSet.numExamples(), readSet.numOutcomes());
         tree.vote(readSet.getFeatures(), predictions);
@@ -117,7 +119,7 @@ public class TestDecisionTrees {
         INDArray features = readSet.getFeatures();
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms(readSet).setNumFeatures(readSet.numInputs());
-        DecisionTree tree = new DecisionTree(readSet, parms, 142857);
+        DecisionTree tree = new DecisionTree(readSet, parms, 142857, new SplitPointFinder.Mean());
         // Create a label array for output.
         INDArray predictions = Nd4j.zeros(readSet.numExamples(), readSet.numOutcomes());
         tree.vote(readSet.getFeatures(), predictions);
@@ -148,7 +150,7 @@ public class TestDecisionTrees {
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms(readSet);
         RandomForest.setSeed(142857);
-        RandomForest forest = new RandomForest(readSet, parms);
+        RandomForest forest = new RandomForest(readSet, parms, new SplitPointFinder.Mean());
         // Create a label array for output.
         INDArray predictions = forest.predict(readSet.getFeatures());
         // Get the actual labels.
@@ -194,7 +196,7 @@ public class TestDecisionTrees {
         RandomForest.Parms parms = new RandomForest.Parms(readSet);
         RandomForest.setSeed(142857);
         log.info("Training role.");
-        RandomForest forest = new RandomForest(readSet, parms);
+        RandomForest forest = new RandomForest(readSet, parms, new SplitPointFinder.Mean());
         // Create a label array for output.
         log.info("Making predictions.");
         long start = System.currentTimeMillis();
@@ -233,24 +235,27 @@ public class TestDecisionTrees {
         INDArray features = readSet.getFeatures();
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms(readSet).setNumFeatures(14);
+        SplitPointFinder[] finders = new SplitPointFinder[] { new SplitPointFinder.Mean(), new SequentialSplitPointFinder() };
         for (Method method : Method.values()) {
-            parms.setMethod(method);
-            log.info("Processing method {}.", method);
-            RandomForest forest = new RandomForest(readSet, parms);
-            // Create a label array for output.
-            INDArray predictions = forest.predict(readSet.getFeatures());
-            // Get the actual labels.
-            INDArray expectations = readSet.getLabels();
-            // Compare output to actual.
-            double good = 0.0;
-            double total = 0.0;
-            for (int i = 0; i < readSet.numExamples(); i++) {
-                int actual = ClassPredictError.computeBest(expectations, i);
-                int predicted = ClassPredictError.computeBest(predictions, i);
-                total++;
-                if (predicted == actual) good++;
+            for (int finderI = 0; finderI < finders.length; finderI++) {
+                parms.setMethod(method);
+                log.info("Processing method {}.", method);
+                RandomForest forest = new RandomForest(readSet, parms, finders[finderI]);
+                // Create a label array for output.
+                INDArray predictions = forest.predict(readSet.getFeatures());
+                // Get the actual labels.
+                INDArray expectations = readSet.getLabels();
+                // Compare output to actual.
+                double good = 0.0;
+                double total = 0.0;
+                for (int i = 0; i < readSet.numExamples(); i++) {
+                    int actual = ClassPredictError.computeBest(expectations, i);
+                    int predicted = ClassPredictError.computeBest(predictions, i);
+                    total++;
+                    if (predicted == actual) good++;
+                }
+                log.info("FOREST {}[{}]: good = {}, total = {}.", method, finderI, good, total);
             }
-            log.info("FOREST {}: good = {}, total = {}.", method, good, total);
         }
     }
 }

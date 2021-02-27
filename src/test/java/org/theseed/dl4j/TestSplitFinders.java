@@ -45,8 +45,5 @@ public class TestSplitFinders {
             assertThat(bestSplitter.compareTo(meanSplitter), lessThanOrEqualTo(0));
         }
     }
-    // FIELDS
-    // TODO data members for TestSplitFinders
 
-    // TODO constructors and methods for TestSplitFinders
 }

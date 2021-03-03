@@ -35,8 +35,9 @@ import org.theseed.dl4j.DistributedOutputStream;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.dl4j.decision.DecisionTree;
 import org.theseed.dl4j.decision.RandomForest;
-import org.theseed.dl4j.decision.SplitPointFinder;
+import org.theseed.dl4j.decision.TreeFeatureSelectorFactory;
 import org.theseed.io.Shuffler;
+import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.ClassTestValidationReport;
 import org.theseed.reports.ClassValidationReport;
 import org.theseed.reports.IValidationReport;
@@ -73,7 +74,8 @@ import org.theseed.utils.ParseFailureException;
  * --minSplit		minimum number of examples allowed in a choice node
  * --maxDepth		maximum tree depth
  * --sampleSize		number of examples to use for each tree's subset
- * --splitMethod	split point determination method (default MEAN)
+ * --selection		feature selection mode (default NORMAL)
+ * --rootFile		if feature selection mode is ROOTED, the name of a file containing the tree root feature names in the first column
  *
  * @author Bruce Parrello
  *
@@ -91,6 +93,8 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     private String resultReport;
     /** impact report */
     private SortedSet<Rating<String>> impact;
+    /** tree feature selection factory iterator */
+    private Iterator<TreeFeatureSelectorFactory> factoryIter;
 
     // COMMAND-LINE OPTIONS
 
@@ -130,9 +134,13 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     @Option(name = "--sampleSize", metaVar = "100", usage = "sample size to use for each tree")
     private int sampleSize;
 
-    /** method for determining split point */
-    @Option(name = "--splitMethod", usage = "method for determining split point in choice nodes")
-    private SplitPointFinder.Type splitMethod;
+    /** method for determining feature selection */
+    @Option(name = "--selection", usage = "method for determining feature selection in individual trees")
+    private TreeFeatureSelectorFactory.Type selection;
+
+    /** file containing root features for ROOTED selection */
+    @Option(name = "--rootFile", usage = "name of tab-delimited file (with headers) in model directory containing list of feature column names for root selection")
+    private String rootFile;
 
     @Override
     public boolean parseCommand(String[] args) {
@@ -174,8 +182,10 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
             DataSet trainingSet = this.readTrainingSet();
             // Build the model from the training set.
             long start = System.currentTimeMillis();
+            log.info("Creating selection factories");
+            this.factoryIter = this.selection.create(this.hParms.getNumTrees(), this);
             log.info("Building the model.");
-            this.model = new RandomForest(trainingSet, this.hParms, this.splitMethod.create(this));
+            this.model = new RandomForest(trainingSet, this.hParms, this.factoryIter);
             // Test the accuracy.
             log.info("Testing the model.");
             // Create a label array for output.
@@ -244,7 +254,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     /**
      * @return the list of column names (in order) for this model's input columns
      */
-    private List<String> getColNames() {
+    public List<String> getColNames() {
         // The tricky part here is we need to compute the column names.  We go through the feature
         // columns one by one.  If we are in channel mode, each channel element gets a number suffix.
         List<String> featureNames = this.reader.getFeatureNames();
@@ -358,7 +368,8 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
         this.comment = null;
         this.idCol = null;
         this.batchSize = 100;
-        this.splitMethod = SplitPointFinder.Type.MEAN;
+        this.selection = TreeFeatureSelectorFactory.Type.NORMAL;
+        this.rootFile = "roots.tbl";
         // Clear the rating value.
         this.bestRating = 0.0;
     }
@@ -395,9 +406,10 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
        writer.format("--maxDepth %d\t# maximum allowable tree depth%n", this.maxDepth);
        writer.format("--sampleSize %d\t# number of examples to use in each subsample%n", this.sampleSize);
        writer.format("--batchSize %d\t# size of each input batch%n", this.batchSize);
-       typeList = Stream.of(SplitPointFinder.Type.values()).map(SplitPointFinder.Type::name).collect(Collectors.joining(", "));
+       typeList = Stream.of(TreeFeatureSelectorFactory.Type.values()).map(TreeFeatureSelectorFactory.Type::name).collect(Collectors.joining(", "));
        writer.format("# Valid split point finder methods are %s.%n", typeList);
-       writer.format("--splitMethod %s\t# split point determination method for choice nodes%n", this.splitMethod.toString());
+       writer.format("--selection %s\t# selection method for features in trees%n", this.selection.toString());
+       writer.format("--rootFile %s\t# file (tab-delimited with headers, column 1) containing root features for ROOTED selection%n", this.rootFile);
        writer.close();
    }
 
@@ -537,6 +549,36 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
         this.minSplit = hyperParms.getLeafLimit() + 1;
         this.maxFeatures = hyperParms.getNumFeatures();
         this.sampleSize = hyperParms.getNumExamples();
+    }
+
+    /**
+     * @return the tuning parameters for this random forest
+     */
+    public RandomForest.Parms getParms() {
+        return this.hParms;
+    }
+
+    /**
+     * @return the random number seed for this process
+     */
+    public int getSeed() {
+        return this.seed;
+    }
+
+    /**
+     * @return the number of input columns
+     */
+    public int getWidth() {
+        return this.reader.getWidth() * this.getChannelCount();
+    }
+
+    /**
+     * @return the feature column names listed in the root file
+     */
+    public List<String> getImpactCols() throws IOException {
+        File impactFile = new File(this.modelDir, this.rootFile);
+        List<String> retVal = TabbedLineReader.readColumn(impactFile, "1");
+        return retVal;
     }
 
 }

@@ -1,7 +1,7 @@
 /**
  *
  */
-package org.theseed.dl4j;
+package org.theseed.dl4j.decision;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -14,6 +14,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 
 import org.junit.Test;
@@ -22,12 +23,10 @@ import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.theseed.dl4j.decision.DecisionTree;
-import org.theseed.dl4j.decision.RandomForest;
+import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.dl4j.decision.RandomForest.Method;
-import org.theseed.dl4j.decision.SequentialSplitPointFinder;
-import org.theseed.dl4j.decision.SplitPointFinder;
 import org.theseed.dl4j.train.ClassPredictError;
+import org.theseed.io.TabbedLineReader;
 
 /**
  * @author Bruce Parrello
@@ -69,7 +68,9 @@ public class TestDecisionTrees {
         INDArray features = readSet.getFeatures();
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms();
-        DecisionTree tree = new DecisionTree(readSet, parms, 142857, new SplitPointFinder.Mean());
+        Iterator<TreeFeatureSelectorFactory> factoryIter = new NormalTreeFeatureSelectorFactory(142857,
+                reader.getWidth(), 4, parms.getNumTrees());
+        DecisionTree tree = new DecisionTree(readSet, parms, factoryIter.next());
         // Create a label array for output.
         INDArray predictions = Nd4j.zeros(readSet.numExamples(), readSet.numOutcomes());
         tree.vote(readSet.getFeatures(), predictions);
@@ -119,7 +120,9 @@ public class TestDecisionTrees {
         INDArray features = readSet.getFeatures();
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms(readSet).setNumFeatures(readSet.numInputs());
-        DecisionTree tree = new DecisionTree(readSet, parms, 142857, new SplitPointFinder.Mean());
+        Iterator<TreeFeatureSelectorFactory> factoryIter = new NormalTreeFeatureSelectorFactory(142857,
+                reader.getWidth(), parms.getNumFeatures(), parms.getNumTrees());
+        DecisionTree tree = new DecisionTree(readSet, parms, factoryIter.next());
         // Create a label array for output.
         INDArray predictions = Nd4j.zeros(readSet.numExamples(), readSet.numOutcomes());
         tree.vote(readSet.getFeatures(), predictions);
@@ -150,7 +153,9 @@ public class TestDecisionTrees {
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms(readSet);
         RandomForest.setSeed(142857);
-        RandomForest forest = new RandomForest(readSet, parms, new SplitPointFinder.Mean());
+        Iterator<TreeFeatureSelectorFactory> factoryIter = new NormalTreeFeatureSelectorFactory(142857,
+                reader.getWidth(), parms.getNumFeatures(), parms.getNumTrees());
+        RandomForest forest = new RandomForest(readSet, parms, factoryIter);
         // Create a label array for output.
         INDArray predictions = forest.predict(readSet.getFeatures());
         // Get the actual labels.
@@ -195,8 +200,10 @@ public class TestDecisionTrees {
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms(readSet);
         RandomForest.setSeed(142857);
+        Iterator<TreeFeatureSelectorFactory> factoryIter = new NormalTreeFeatureSelectorFactory(142857,
+                reader.getWidth(), parms.getNumFeatures(), parms.getNumTrees());
         log.info("Training role.");
-        RandomForest forest = new RandomForest(readSet, parms, new SplitPointFinder.Mean());
+        RandomForest forest = new RandomForest(readSet, parms, factoryIter);
         // Create a label array for output.
         log.info("Making predictions.");
         long start = System.currentTimeMillis();
@@ -235,12 +242,17 @@ public class TestDecisionTrees {
         INDArray features = readSet.getFeatures();
         readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
         RandomForest.Parms parms = new RandomForest.Parms(readSet).setNumFeatures(14);
-        SplitPointFinder[] finders = new SplitPointFinder[] { new SplitPointFinder.Mean(), new SequentialSplitPointFinder() };
+        File ratingFile = new File("src/test/data", "ratings.tbl");
+        List<String> impactCols = TabbedLineReader.readColumn(ratingFile, "1");
+        List<Iterator<TreeFeatureSelectorFactory>> finders = Arrays.asList(
+                new NormalTreeFeatureSelectorFactory(142857, reader.getWidth(), parms.getNumFeatures(), parms.getNumTrees()),
+                new RootedTreeFeatureSelectorFactory(142857, reader.getFeatureNames(),
+                        impactCols, parms.getNumFeatures(), parms.getNumTrees()));
         for (Method method : Method.values()) {
-            for (int finderI = 0; finderI < finders.length; finderI++) {
+            for (Iterator<TreeFeatureSelectorFactory> finder : finders) {
                 parms.setMethod(method);
-                log.info("Processing method {}.", method);
-                RandomForest forest = new RandomForest(readSet, parms, finders[finderI]);
+                log.info("Processing method {} with finder {}.", method, finder);
+                RandomForest forest = new RandomForest(readSet, parms, finder);
                 // Create a label array for output.
                 INDArray predictions = forest.predict(readSet.getFeatures());
                 // Get the actual labels.
@@ -254,7 +266,7 @@ public class TestDecisionTrees {
                     total++;
                     if (predicted == actual) good++;
                 }
-                log.info("FOREST {}[{}]: good = {}, total = {}.", method, finderI, good, total);
+                log.info("FOREST {}[{}]: good = {}, total = {}.", method, finder.toString(), good, total);
             }
         }
     }

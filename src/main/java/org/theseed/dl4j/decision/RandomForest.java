@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -49,7 +50,7 @@ public class RandomForest implements Serializable {
     /** randomizer for selecting training sets */
     private transient IRandomizer randomizer;
     /** split point finder */
-    private transient SplitPointFinder finder;
+    private transient Iterator<TreeFeatureSelectorFactory> factoryIter;
 
     /**
      * type of randomization
@@ -292,24 +293,27 @@ public class RandomForest implements Serializable {
     /**
      * Construct a forest based on the specified training set.
      *
-     * @param dataset	training set to use
-     * @param parms		hyper-parameters
-     * @param finder	split point finder
+     * @param dataset		training set to use
+     * @param parms			hyper-parameters
+     * @param factoryIter	iterator for feature selector factories to be used in producing the forest
      */
-    public RandomForest(DataSet dataset, Parms parms, SplitPointFinder finder) {
+    public RandomForest(DataSet dataset, Parms parms, Iterator<TreeFeatureSelectorFactory> factoryIter) {
         this.nLabels = dataset.numOutcomes();
         this.nFeatures = dataset.numInputs();
         this.parms = parms;
-        this.finder = finder;
+        this.factoryIter = factoryIter;
         this.randomizer = parms.getRandomizer();
         // Initialize the randomizer.
         this.randomizer.initializeData(this.nLabels, this.parms.getNumExamples(), dataset);
-        // Create an array of randomizer seeds, two per tree.
-        long[] seeds1 = rand.longs(this.parms.getNumTrees()).toArray();
-        long[] seeds2 = rand.longs(this.parms.getNumTrees()).toArray();
+        // Create an array of randomizer seeds.
+        long[] seeds = rand.longs(this.parms.getNumTrees()).toArray();
+        // Create an array of tree selector factories.  This is a sequential operation, so we have to do it here,
+        // not in the parallel stream below.
+        TreeFeatureSelectorFactory[] factories = IntStream.range(0, this.parms.getNumTrees())
+                .mapToObj(i -> this.factoryIter.next()).toArray(TreeFeatureSelectorFactory[]::new);
         // Create the decision trees in the random forest.
         this.trees = IntStream.range(0, this.parms.getNumTrees()).parallel()
-                .mapToObj(i -> this.buildTree(seeds1[i], seeds2[i]))
+                .mapToObj(i -> this.buildTree(seeds[i], factories[i]))
                 .collect(Collectors.toList());
     }
 
@@ -318,16 +322,16 @@ public class RandomForest implements Serializable {
      * Note that all the trees are built in parallel, so care has been taken not to modify
      * the incoming parameters.
      *
-     * @param seed1			seed to use for data randomization
-     * @param seed2			seed to use for feature randomization
+     * @param seed			seed to use for data randomization
+     * @param factory		feature selector factory for feature randomization
      *
      * @return a decision tree for the sampled subset
      */
-    private DecisionTree buildTree(long seed1, long seed2) {
+    private DecisionTree buildTree(long seed, TreeFeatureSelectorFactory factory) {
         // Get the sampling to use for training this tree.
-        DataSet sample = this.randomizer.getData(seed1);
+        DataSet sample = this.randomizer.getData(seed);
         // Build the decision tree.
-        DecisionTree retVal = new DecisionTree(sample, this.parms, seed2, this.finder);
+        DecisionTree retVal = new DecisionTree(sample, this.parms, factory);
         return retVal;
     }
 

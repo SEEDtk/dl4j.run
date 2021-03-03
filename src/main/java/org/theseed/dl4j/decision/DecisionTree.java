@@ -6,9 +6,6 @@ package org.theseed.dl4j.decision;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
-import java.util.stream.IntStream;
-
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
@@ -37,12 +34,10 @@ public class DecisionTree implements Serializable {
     private Node root;
     /** hyperparameters */
     private transient RandomForest.Parms parms;
-    /** randomizer */
-    private transient Random randomizer;
+    /** feature selector factory for training */
+    private transient TreeFeatureSelectorFactory factory;
     /** log base 2 factor */
     private static double LOG2BASE = Math.log(2.0);
-    /** split point finder to use for computing the split point of a feature */
-    private transient SplitPointFinder splitFinder;
     /** object ID for serialization */
     private static final long serialVersionUID = 4184229432605504478L;
 
@@ -221,44 +216,20 @@ public class DecisionTree implements Serializable {
      * @param parms		hyperparameter specification
      * @param finder	split point finder
      */
-    public DecisionTree(DataSet dataset, RandomForest.Parms parms, long randSeed, SplitPointFinder finder) {
+    public DecisionTree(DataSet dataset, RandomForest.Parms parms, TreeFeatureSelectorFactory factory) {
         this.nClasses = dataset.numOutcomes();
         this.nFeatures = dataset.numInputs();
         this.parms = parms;
-        this.randomizer = new Random(randSeed);
-        this.splitFinder = finder;
+        this.factory = factory;
         // Compute the number of features to use in each tree.
         int arraySize = parms.getNumFeatures();
         if (this.nFeatures < arraySize) arraySize = this.nFeatures;
-        // Get the features to use.
-        int[] features = this.featuresToUse(arraySize);
         // Compute the starting entropy.
         double entropy = DecisionTree.entropy(dataset);
         // Split the dataset into rows.
         List<DataSet> rows = dataset.asList();
         // Create the root node.
-        this.root = this.computeNode(rows, 0, features, entropy);
-    }
-
-    /**
-     * Create an array of randomly-selected indices specifying the features to use.
-     *
-     * @param arraySize		number of features to select
-     *
-     * @return an array of the specified size using
-     */
-    private int[] featuresToUse(int arraySize) {
-        // Get all the possible feature indices in an array.
-        int[] range = IntStream.range(0, this.nFeatures).toArray();
-        // Form the output array.
-        int[] retVal = new int[arraySize];
-        // Loop through the range array, picking random items.
-        for (int i = 0; i < arraySize; i++) {
-            int rand = this.randomizer.nextInt(this.nFeatures - i);
-            retVal[i] = range[rand + i];
-            range[rand + i] = range[i];
-        }
-        return retVal;
+        this.root = this.computeNode(rows, 0, entropy);
     }
 
     /**
@@ -298,12 +269,11 @@ public class DecisionTree implements Serializable {
      *
      * @param rows				dataset rows to be classified by this node
      * @param depth				depth of the node in question
-     * @param featuresToUse		array of feature indices to use
      * @param entropy			entropy of the set
      *
      * @return a node for deciding this set
      */
-    private Node computeNode(List<DataSet> rows, int depth, int[] featuresToUse, double entropy) {
+    private Node computeNode(List<DataSet> rows, int depth, double entropy) {
         Node retVal;
         // Is this a leaf?
         if (rows.size() <= this.parms.getLeafLimit() || entropy <= 0.0 || depth >= this.parms.getMaxDepth()) {
@@ -314,8 +284,10 @@ public class DecisionTree implements Serializable {
             // These variables contain the data we need to split the dataset for the children.
             Splitter best = Splitter.NULL;
             // Loop through the features left to examine.
-            for (int i : featuresToUse) {
-                Splitter test = this.splitFinder.computeSplit(i, this.nClasses, rows, entropy);
+            FeatureSelector selector = this.factory.getSelector(depth);
+            SplitPointFinder finder = selector.getFinder();
+            for (int i : selector.getFeaturesToUse()) {
+                Splitter test = finder.computeSplit(i, this.nClasses, rows, entropy);
                 if (test.compareTo(best) < 0)
                     best = test;
             }
@@ -335,9 +307,9 @@ public class DecisionTree implements Serializable {
                         right.add(row);
                 }
                 // Create the left node.
-                newNode.setLeft(this.computeNode(left, depth + 1, featuresToUse, best.getLeftEntropy()));
+                newNode.setLeft(this.computeNode(left, depth + 1, best.getLeftEntropy()));
                 // Create the right node.  Here we can reuse the old bitmap.
-                newNode.setRight(this.computeNode(right, depth + 1, featuresToUse, best.getRightEntropy()));
+                newNode.setRight(this.computeNode(right, depth + 1, best.getRightEntropy()));
                 // Return the new node.
                 retVal = newNode;
             }

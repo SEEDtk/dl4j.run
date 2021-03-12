@@ -32,6 +32,8 @@ public class DecisionTree implements Serializable {
     private int nClasses;
     /** root node */
     private Node root;
+    /** number of nodes in tree */
+    private int size;
     /** hyperparameters */
     private transient RandomForest.Parms parms;
     /** feature selector factory for training */
@@ -39,7 +41,7 @@ public class DecisionTree implements Serializable {
     /** log base 2 factor */
     private static double LOG2BASE = Math.log(2.0);
     /** object ID for serialization */
-    private static final long serialVersionUID = 4184229432605504478L;
+    private static final long serialVersionUID = 4184229432605504479L;
 
     /**
      * This nested class represents a tree node.
@@ -221,6 +223,7 @@ public class DecisionTree implements Serializable {
         this.nFeatures = dataset.numInputs();
         this.parms = parms;
         this.factory = factory;
+        this.size = 0;
         // Compute the number of features to use in each tree.
         int arraySize = parms.getNumFeatures();
         if (this.nFeatures < arraySize) arraySize = this.nFeatures;
@@ -314,6 +317,7 @@ public class DecisionTree implements Serializable {
                 retVal = newNode;
             }
         }
+        this.size++;
         return retVal;
     }
 
@@ -342,6 +346,7 @@ public class DecisionTree implements Serializable {
      */
     private Node createLeaf(List<DataSet> rows, double entropy) {
         int label = DecisionTree.bestLabel(rows);
+        this.size++;
         return new LeafNode(label, entropy);
     }
 
@@ -449,6 +454,13 @@ public class DecisionTree implements Serializable {
     protected void accumulateImpact(INDArray impactArray) {
         // Process all the nodes.
         this.root.addImpact(impactArray);
+    }
+
+    /**
+     * @return the number of nodes in the tree
+     */
+    public int size() {
+        return this.size;
     }
 
 }

@@ -313,7 +313,7 @@ public class RandomForest implements Serializable {
                 .mapToObj(i -> this.factoryIter.next()).toArray(TreeFeatureSelectorFactory[]::new);
         // Create the decision trees in the random forest.
         this.trees = IntStream.range(0, this.parms.getNumTrees()).parallel()
-                .mapToObj(i -> this.buildTree(seeds[i], factories[i]))
+                .mapToObj(i -> this.buildTree(i, seeds[i], factories[i]))
                 .collect(Collectors.toList());
     }
 
@@ -322,12 +322,13 @@ public class RandomForest implements Serializable {
      * Note that all the trees are built in parallel, so care has been taken not to modify
      * the incoming parameters.
      *
+     * @param id			ID number of the tree
      * @param seed			seed to use for data randomization
      * @param factory		feature selector factory for feature randomization
      *
      * @return a decision tree for the sampled subset
      */
-    private DecisionTree buildTree(long seed, TreeFeatureSelectorFactory factory) {
+    private DecisionTree buildTree(int id, long seed, TreeFeatureSelectorFactory factory) {
         // Get the sampling to use for training this tree.
         DataSet sample = this.randomizer.getData(seed);
         // Build the decision tree.

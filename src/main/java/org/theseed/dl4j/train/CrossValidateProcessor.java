@@ -205,11 +205,12 @@ public class CrossValidateProcessor implements ICommand {
             // Prevent the model from saving.
             this.trainingProcessor.setSearchMode();
             for (int k = 1; k <= this.foldK; k++) {
-                TabbedDataSetReader myReader = this.trainingProcessor.openReader(this.mainFile);
-                this.trainingProcessor.configureTraining(myReader);
-                // Fix the comment and run the training.
+                // Fix the comment.
                 String comment = String.format("Cross-validation fold %d.", k);
                 this.trainingProcessor.setComment(comment);
+                // Read the data and run the training.
+                TabbedDataSetReader myReader = this.trainingProcessor.openReader(this.mainFile);
+                this.trainingProcessor.configureTraining(myReader);
                 this.progressMonitor.showMessage(comment);
                 this.trainingProcessor.run();
                 // Compute the accuracy.  Note we reread the input.
@@ -274,6 +275,13 @@ public class CrossValidateProcessor implements ICommand {
             e.printStackTrace(System.err);
             this.progressMonitor.showResults(ExceptionUtils.getStackTrace(e));
         }
+    }
+
+    /**
+     * @return the error information for the cross-validation
+     */
+    public RegressionStatistics getResults() {
+        return this.errorTracker;
     }
 
 }

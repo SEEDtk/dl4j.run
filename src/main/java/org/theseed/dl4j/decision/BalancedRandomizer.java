@@ -4,6 +4,7 @@
 package org.theseed.dl4j.decision;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -61,6 +62,13 @@ public class BalancedRandomizer implements IRandomizer {
         for (DataSet row : allRows) {
             int label = DecisionTree.bestLabel(row);
             retVal.get(label).add(row);
+        }
+        // Remove the empty sets.
+        Iterator<List<DataSet>> iter = retVal.iterator();
+        while (iter.hasNext()) {
+            List<DataSet> curr = iter.next();
+            if (curr.isEmpty())
+                iter.remove();
         }
         return retVal;
     }

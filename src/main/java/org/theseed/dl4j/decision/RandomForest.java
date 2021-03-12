@@ -351,7 +351,8 @@ public class RandomForest implements Serializable {
     }
 
     /**
-     * Compute the impact of each input on the classifications.
+     * Compute the impact of each input on the classifications.  This is a one-dimensional array with
+     * a number for each input.
      */
     public INDArray computeImpact() {
         INDArray retVal = Nd4j.zeros(this.nFeatures);

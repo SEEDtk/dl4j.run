@@ -253,6 +253,17 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
     }
 
     /**
+     * Read all the batches into a single dataset.
+     */
+    public DataSet readAll() {
+        int saved = this.batchSize;
+        this.batchSize = Integer.MAX_VALUE;
+        DataSet retVal = this.next();
+        this.batchSize = saved;
+        return retVal;
+    }
+
+    /**
      * Return the next batch of data.
      */
     @Override
@@ -442,6 +453,13 @@ public class TabbedDataSetReader implements Iterable<DataSet>, Iterator<DataSet>
      */
     public ArrayList<Entry> getBuffer() {
         return buffer;
+    }
+
+    /**
+     * Close this dataset reader.
+     */
+    public void close() {
+        this.reader.close();
     }
 
 }

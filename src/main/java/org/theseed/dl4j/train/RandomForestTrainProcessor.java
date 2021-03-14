@@ -177,7 +177,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
     public void run() {
         try {
             // Convert the testing set to decision tree format.
-            RandomForestTrainProcessor.flattenDataSet(this.testingSet);
+            RandomForest.flattenDataSet(this.testingSet);
             // Now we read the training set.
             DataSet trainingSet = this.readTrainingSet();
             // Build the model from the training set.
@@ -331,7 +331,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
         log.info("Reading training set.");
         List<DataSet> batches = new ArrayList<DataSet>();
         for (DataSet batch : this.reader) {
-            flattenDataSet(batch);
+            RandomForest.flattenDataSet(batch);
             batches.add(batch);
         }
         DataSet retVal = DataSet.merge(batches);
@@ -447,7 +447,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
         testErrorReport.startReport(this.getMetaList(), this.getLabels());
         // Loop through the data, making predictions.
         for (DataSet batch : batches) {
-            INDArray features = flattenFeatures(batch.getFeatures());
+            INDArray features = RandomForest.flattenFeatures(batch.getFeatures());
             INDArray output = this.model.predict(features);
             retVal.accumulate(batch.getLabels(), output);
             testErrorReport.reportOutput(batch.getExampleMetaData(String.class), batch.getLabels(), output);
@@ -497,7 +497,7 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
         this.hParms.setMethod(this.method);
         this.hParms.setLeafLimit(this.minSplit - 1);
         this.hParms.setMaxDepth(this.maxDepth);
-        this.hParms.setnExamples(this.sampleSize);
+        this.hParms.setNumExamples(this.sampleSize);
         this.hParms.setNumFeatures(this.maxFeatures);
         this.hParms.setNumTrees(this.nEstimators);
         // Set the randomizer seed.
@@ -506,26 +506,6 @@ public class RandomForestTrainProcessor extends ModelProcessor implements ITrain
         initializeBaseModelParms();
         // If the user asked for a configuration file, write it here.
         if (this.parmFile != null) writeParms(this.parmFile);
-    }
-
-    /**
-     * Convert a feature array from the 4-dimensional shape used by neural nets to a standard 2 dimensions.
-     *
-     * @param features		feature array to reshape
-     *
-     * @return the incoming list of examples, flattened to a row/column matrix
-     */
-    public static INDArray flattenFeatures(INDArray features) {
-        return features.reshape(features.size(0), features.size(1) * features.size(3));
-    }
-
-    /**
-     * Convert a dataset's feature array from the 4-dimensional shape used by neural nets to a standard 2 dimensions.
-     *
-     * @param dataset		dataset to convert
-     */
-    public static void flattenDataSet(DataSet dataset) {
-        dataset.setFeatures(flattenFeatures(dataset.getFeatures()));
     }
 
     @Override

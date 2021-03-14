@@ -22,11 +22,13 @@ import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.dl4j.train.ClassPredictError;
 import org.theseed.utils.IDescribable;
 
 /**
  * A random forest is a set of decision trees, each trained on a randomly-selected subset of the
- * full training set.  An entire forest predicts an outcome by voting
+ * full training set.  An entire forest predicts an outcome by voting.
+ *
  * @author Bruce Parrello
  *
  */
@@ -243,7 +245,7 @@ public class RandomForest implements Serializable {
          *
          * @param nExamples the number of examples to use
          */
-        public Parms setnExamples(int nExamples) {
+        public Parms setNumExamples(int nExamples) {
             this.nExamples = nExamples;
             return this;
         }
@@ -299,6 +301,17 @@ public class RandomForest implements Serializable {
      */
     public RandomForest(DataSet dataset, Parms parms, Iterator<TreeFeatureSelectorFactory> factoryIter) {
         this.nLabels = dataset.numOutcomes();
+        buildForest(dataset, parms, factoryIter);
+    }
+
+    /**
+     * Build a forest based on the specified training set.
+     *
+     * @param dataset		training set to use
+     * @param parms			hyper-parameters
+     * @param factoryIter	iterator for feature selector factories to be used in producing the forest
+     */
+    private void buildForest(DataSet dataset, Parms parms, Iterator<TreeFeatureSelectorFactory> factoryIter) {
         this.nFeatures = dataset.numInputs();
         this.parms = parms;
         this.factoryIter = factoryIter;
@@ -315,6 +328,21 @@ public class RandomForest implements Serializable {
         this.trees = IntStream.range(0, this.parms.getNumTrees()).parallel()
                 .mapToObj(i -> this.buildTree(i, seeds[i], factories[i]))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Construct a random forest with the standard tree feature-selection factory.
+     *
+     * @param dataset	training set to process
+     * @param hParms	hyper-parameters
+     *
+     * @throws IOException
+     */
+    public RandomForest(DataSet dataset, Parms hParms) throws IOException {
+        this.nLabels = dataset.numOutcomes();
+        Iterator<TreeFeatureSelectorFactory> treeIter = new NormalTreeFeatureSelectorFactory(rand.nextLong(),
+                dataset.numInputs(), hParms.getNumFeatures(), hParms.getNumTrees());
+        this.buildForest(dataset, hParms, treeIter);
     }
 
     /**
@@ -348,6 +376,26 @@ public class RandomForest implements Serializable {
         for (DecisionTree tree : this.trees)
             tree.vote(features, retVal);
         return retVal;
+    }
+
+    /**
+     * @return the accuracy of a classifier for the specified testing set
+     *
+     * @param testSet		testing set to check
+     */
+    public double getAccuracy(DataSet testSet) {
+        // Get the predictions.
+        INDArray predictions = this.predict(testSet.getFeatures());
+        // Compare to the expectations.
+        int good = 0;
+        int total = 0;
+        INDArray expected = testSet.getLabels();
+        for (int r = 0; r < predictions.rows(); r++) {
+            if (ClassPredictError.computeBest(predictions, r) == ClassPredictError.computeBest(expected, r))
+                good++;
+            total++;
+        }
+        return ((double) good) / total;
     }
 
     /**
@@ -394,4 +442,25 @@ public class RandomForest implements Serializable {
         }
         return retVal;
     }
+
+    /**
+     * Convert a feature array from the 4-dimensional shape used by neural nets to a standard 2 dimensions.
+     *
+     * @param features		feature array to reshape
+     *
+     * @return the incoming list of examples, flattened to a row/column matrix
+     */
+    public static INDArray flattenFeatures(INDArray features) {
+        return features.reshape(features.size(0), features.size(1) * features.size(3));
+    }
+
+    /**
+     * Convert a dataset's feature array from the 4-dimensional shape used by neural nets to a standard 2 dimensions.
+     *
+     * @param dataset		dataset to convert
+     */
+    public static void flattenDataSet(DataSet dataset) {
+        dataset.setFeatures(flattenFeatures(dataset.getFeatures()));
+    }
+
 }

@@ -108,7 +108,10 @@ public class ControlLine {
      * Release the memory for the model and the reader.
      */
     public void close() {
-        this.reader = null;
+        if (this.reader != null) {
+            this.reader.close();
+            this.reader = null;
+        }
         this.model = null;
     }
 

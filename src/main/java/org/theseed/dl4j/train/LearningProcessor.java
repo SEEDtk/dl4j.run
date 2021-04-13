@@ -178,6 +178,7 @@ public class LearningProcessor extends ModelProcessor {
         retVal.append(" + %4.2g = Confidence%n", biases.getDouble(0));
         return retVal.toString();
     }
+
     /**
      * @return a string describing the parameters of the specified model, layer by layer
      *
@@ -319,6 +320,31 @@ public class LearningProcessor extends ModelProcessor {
 
     @Override
     protected void initializeModelParameters() throws FileNotFoundException, IOException {
+    }
+
+    /**
+     * @return TRUE if the model is valid, FALSE if it has overflowed
+     *
+     * @param model		the model to check
+     */
+    public boolean checkModel(MultiLayerNetwork model) {
+        boolean retVal = true;
+        org.deeplearning4j.nn.api.Layer[] layers = model.getLayers();
+        for (org.deeplearning4j.nn.api.Layer layer : layers) {
+            Map<String, INDArray> params = layer.paramTable();
+            for (String pType : params.keySet()) {
+                INDArray pValue = params.get(pType);
+                long count = 0;
+                for (long i = 0; i < pValue.length(); i++) {
+                    double value = pValue.getDouble(i);
+                    if (Double.isFinite(value))
+                        count++;
+                }
+                if (count == 0)
+                    retVal = false;
+            }
+        }
+        return retVal;
     }
 
 }

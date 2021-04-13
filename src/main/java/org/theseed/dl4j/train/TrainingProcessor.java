@@ -732,6 +732,10 @@ public abstract class TrainingProcessor extends LearningProcessor implements ITr
             Trainer trainer = Trainer.create(this.method, this, log);
             RunStats runStats = this.createRunStats(model, trainer);
             this.trainModel(model, runStats, trainer, this.getProgressMonitor());
+            // Verify that the trained model is valid.
+            if (! this.checkModel(model))
+                throw new IllegalArgumentException("Model has overflowed with current parameters.");
+            // Save the result.
             this.saveModel();
             // Display the configuration.
             MultiLayerNetwork bestModel = runStats.getBestModel();

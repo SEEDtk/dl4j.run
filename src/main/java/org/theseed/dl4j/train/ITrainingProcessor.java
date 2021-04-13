@@ -241,7 +241,7 @@ public interface ITrainingProcessor extends ICommand {
     public void saveModelForced() throws IOException;
 
     /**
-     * @return
+     * @return the model's performance rating (higher is better)
      */
     public double getRating();
 
@@ -260,4 +260,5 @@ public interface ITrainingProcessor extends ICommand {
      * @throws IOException
      */
     public int getLabelIndex(File parmFile) throws IOException;
+
 }

@@ -14,6 +14,7 @@ import org.theseed.dl4j.train.ImproveProcessor;
 import org.theseed.dl4j.train.RandomForestTrainProcessor;
 import org.theseed.dl4j.train.RegressionTrainingProcessor;
 import org.theseed.dl4j.train.SearchProcessor;
+import org.theseed.dl4j.train.TrainCheckProcessor;
 import org.theseed.dl4j.train.ClassTrainingProcessor;
 import org.theseed.dl4j.train.CrossValidateProcessor;
 import org.theseed.utils.ICommand;
@@ -101,6 +102,10 @@ public class App
                 break;
             case "pearson" :
                 runObject = new PearsonProcessor();
+                success = execute(runObject, args);
+                break;
+            case "trainCheck" :
+                runObject = new TrainCheckProcessor();
                 success = execute(runObject, args);
                 break;
             case "--help" :

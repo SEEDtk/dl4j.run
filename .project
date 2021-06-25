@@ -3,6 +3,7 @@
 	<name>dl4j.run</name>
 	<comment></comment>
 	<projects>
+		<project>dl4j.decision</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>

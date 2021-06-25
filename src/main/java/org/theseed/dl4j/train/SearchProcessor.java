@@ -155,7 +155,7 @@ public class SearchProcessor implements ICommand {
         else
             this.progressMonitor = new NullTrainReporter();
         try {
-            RunStats.writeTrialMarker(processor.getTrialFile(), "Search");
+            RunLog.writeTrialMarker(processor.getTrialFile(), "Search");
         } catch (IOException e) {
             log.error("Error writing trial file: {}", e.getMessage());
         }
@@ -264,7 +264,7 @@ public class SearchProcessor implements ICommand {
             log.info(report);
             // Write it to the trial file.
             try {
-                RunStats.writeTrialReport(processor.getTrialFile(), "Summary of Search-Mode Results", report);
+                RunLog.writeTrialReport(processor.getTrialFile(), "Summary of Search-Mode Results", report);
                 this.progressMonitor.showMessage(String.format("Best iteration was %d with rating %g.", bestIteration, bestRating));
             } catch (IOException e) {
                 log.error("Error writing trials.log:" + e.getMessage());

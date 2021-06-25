@@ -111,7 +111,7 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
             // Output the result.
             String report = parms.toString();
             log.info(report);
-            RunStats.writeTrialReport(this.getTrialFile(), this.comment, report);
+            RunLog.writeTrialReport(this.getTrialFile(), this.comment, report);
         } catch (Exception e) {
             e.printStackTrace(System.err);
         }

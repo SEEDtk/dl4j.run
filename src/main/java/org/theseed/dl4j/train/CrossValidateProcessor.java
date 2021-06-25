@@ -194,7 +194,7 @@ public class CrossValidateProcessor implements ICommand {
             // Set the progress monitor.
             this.trainingProcessor.setProgressMonitor(this.progressMonitor);
             try {
-                RunStats.writeTrialMarker(this.trainingProcessor.getTrialFile(), "Cross-Validate");
+                RunLog.writeTrialMarker(this.trainingProcessor.getTrialFile(), "Cross-Validate");
             } catch (IOException e) {
                 log.error("Error writing trial file: {}", e.getMessage());
             }
@@ -269,7 +269,7 @@ public class CrossValidateProcessor implements ICommand {
                     this.errorTracker.trimmedMean(0.2), this.errorTracker.iqr()));
             // Write the report and log it.
             String report = buffer.toString();
-            RunStats.writeTrialReport(this.trainingProcessor.getTrialFile(), "Summary of Cross-Validation", report);
+            RunLog.writeTrialReport(this.trainingProcessor.getTrialFile(), "Summary of Cross-Validation", report);
             log.info(report);
         } catch (Exception e) {
             e.printStackTrace(System.err);

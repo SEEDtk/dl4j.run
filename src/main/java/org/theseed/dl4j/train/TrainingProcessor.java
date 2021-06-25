@@ -756,7 +756,7 @@ public abstract class TrainingProcessor extends LearningProcessor implements ITr
             // Output the result.
             String report = parms.toString();
             log.info(report);
-            RunStats.writeTrialReport(this.getTrialFile(), this.comment, report);
+            RunLog.writeTrialReport(this.getTrialFile(), this.comment, report);
             this.resultReport = this.comment + report;
         } catch (IOException e) {
             throw new UncheckedIOException(e);

@@ -2,11 +2,13 @@ package org.theseed.dl4j.train;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DurationFormatUtils;
 import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
@@ -104,7 +106,14 @@ public class LearningProcessor extends ModelProcessor {
         // Here we save the model.
         if (results.getSaveCount() > 0) {
             log.info("Saving model to {}.", this.modelName);
-            ModelSerializer.writeModel(results.getBestModel(), this.modelName, true, normalizer);
+            try (FileOutputStream fStream = new FileOutputStream(this.modelName)) {
+                ModelSerializer.writeModel(results.getBestModel(), fStream, true, normalizer);
+            } catch (IOException e) {
+                if (! StringUtils.contains(e.getMessage(), "stream is closed"))
+                    throw e;
+                else
+                    log.warn("DL4J stream error occurred.");
+            }
         }
     }
 

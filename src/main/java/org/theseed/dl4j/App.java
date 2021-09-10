@@ -13,6 +13,7 @@ import org.theseed.dl4j.predict.ValidateProcessor;
 import org.theseed.dl4j.train.ImproveProcessor;
 import org.theseed.dl4j.train.RandomForestTrainProcessor;
 import org.theseed.dl4j.train.RegressionTrainingProcessor;
+import org.theseed.dl4j.train.RocProcessor;
 import org.theseed.dl4j.train.SearchProcessor;
 import org.theseed.dl4j.train.TrainCheckProcessor;
 import org.theseed.dl4j.train.ClassTrainingProcessor;
@@ -106,6 +107,10 @@ public class App
                 break;
             case "trainCheck" :
                 runObject = new TrainCheckProcessor();
+                success = execute(runObject, args);
+                break;
+            case "roc" :
+                runObject = new RocProcessor();
                 success = execute(runObject, args);
                 break;
             case "--help" :

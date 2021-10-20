@@ -109,7 +109,7 @@ public class LearningProcessor extends ModelProcessor {
             try (FileOutputStream fStream = new FileOutputStream(this.modelName)) {
                 ModelSerializer.writeModel(results.getBestModel(), fStream, true, normalizer);
             } catch (IOException e) {
-                if (! StringUtils.contains(e.getMessage(), "stream is closed"))
+                if (! StringUtils.contains(e.toString(), "stream is closed"))
                     throw e;
                 else
                     log.warn("DL4J stream error occurred.");

@@ -172,9 +172,9 @@ public class MultiRunProcessor implements ICommand {
                 }
             }
         } catch (IOException e) {
-            System.err.print(e.getMessage());
+            System.err.print(e.toString());
         } catch (CmdLineException | ParseFailureException e) {
-            System.err.print("Invalid command-line options: " + e.getMessage());
+            System.err.print("Invalid command-line options: " + e.toString());
         }
         return retVal;
     }

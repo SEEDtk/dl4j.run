@@ -168,12 +168,12 @@ public class CrossValidateProcessor implements ICommand {
                 }
             }
         } catch (CmdLineException | ParseFailureException e) {
-            System.err.println(e.getMessage());
+            System.err.println(e.toString());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
-            this.progressMonitor.showResults("Parameter error: " + e.getMessage());
+            this.progressMonitor.showResults("Parameter error: " + e.toString());
         } catch (IOException e) {
-            System.err.println(e.getMessage());
+            System.err.println(e.toString());
         }
         return retVal;
     }
@@ -196,7 +196,7 @@ public class CrossValidateProcessor implements ICommand {
             try {
                 RunLog.writeTrialMarker(this.trainingProcessor.getTrialFile(), "Cross-Validate");
             } catch (IOException e) {
-                log.error("Error writing trial file: {}", e.getMessage());
+                log.error("Error writing trial file: {}", e.toString());
             }
             // Set the defaults.
             this.trainingProcessor.setupParameters(this.parms, this.modelDir);

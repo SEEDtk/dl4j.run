@@ -62,7 +62,7 @@ public class EpochTrainer extends Trainer {
                 saved = runStats.checkModel(model, testingSet, this.processor, seconds, this.eventsName(), process);
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.  Fake a score bounce.
-                log.warn("IllegalStateException: {}", e.getMessage());
+                log.warn("IllegalStateException: {}", e.toString());
                 runStats.error();
             }
             oldScore = newScore;

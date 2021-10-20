@@ -60,11 +60,11 @@ public class ImproveProcessor extends LearningProcessor implements ICommand {
                 retVal = true;
             }
         } catch (CmdLineException e) {
-            System.err.println(e.getMessage());
+            System.err.println(e.toString());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
         } catch (IOException e) {
-            System.err.println(e.getMessage());
+            System.err.println(e.toString());
         }
         return retVal;
     }

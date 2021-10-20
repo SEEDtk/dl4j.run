@@ -133,7 +133,7 @@ public class SearchProcessor implements ICommand {
                 }
             }
         } catch (CmdLineException e) {
-            System.err.println(e.getMessage());
+            System.err.println(e.toString());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
         } catch (IOException e) {
@@ -157,7 +157,7 @@ public class SearchProcessor implements ICommand {
         try {
             RunLog.writeTrialMarker(processor.getTrialFile(), "Search");
         } catch (IOException e) {
-            log.error("Error writing trial file: {}", e.getMessage());
+            log.error("Error writing trial file: {}", e.toString());
         }
         // These variables track our progress and success.
         int iteration = 1;
@@ -221,10 +221,10 @@ public class SearchProcessor implements ICommand {
                 // Save this row of the summary array.
                 data.add(values);
             } catch (ParseFailureException e) {
-                log.error("Fatal exception in iteration {}: {}", iteration, e.getMessage());
+                log.error("Fatal exception in iteration {}: {}", iteration, e.toString());
                 throw new RuntimeException(e);
             } catch (Exception e) {
-                log.error("Exception in iteration {}: {}", iteration, e.getMessage());
+                log.error("Exception in iteration {}: {}", iteration, e.toString());
                 e.printStackTrace(System.err);
                 log.error("Iteration aborted due to error.");
                 this.progressMonitor.showResults(ExceptionUtils.getStackTrace(e));
@@ -267,7 +267,7 @@ public class SearchProcessor implements ICommand {
                 RunLog.writeTrialReport(processor.getTrialFile(), "Summary of Search-Mode Results", report);
                 this.progressMonitor.showMessage(String.format("Best iteration was %d with rating %g.", bestIteration, bestRating));
             } catch (IOException e) {
-                log.error("Error writing trials.log:" + e.getMessage());
+                log.error("Error writing trials.log:" + e.toString());
             }
         }
     }

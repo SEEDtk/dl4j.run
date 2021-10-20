@@ -183,10 +183,10 @@ public class RegressionTrainingProcessor extends TrainingProcessor implements IC
                 retVal = true;
             }
         } catch (CmdLineException e) {
-            System.err.println(e.getMessage());
+            System.err.println(e.toString());
             // For parameter errors, we display the command usage.
             parser.printUsage(System.err);
-            this.getProgressMonitor().showResults("Error in parameters: " + e.getMessage());
+            this.getProgressMonitor().showResults("Error in parameters: " + e.toString());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

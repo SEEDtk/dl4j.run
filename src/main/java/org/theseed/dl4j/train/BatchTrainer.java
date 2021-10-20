@@ -65,7 +65,7 @@ public class BatchTrainer extends Trainer {
             } catch (IllegalStateException e) {
                 // Here we had underflow in the evaluation.
                 newScore = Double.NaN;
-                log.warn("IllegalStateException: {}", e.getMessage());
+                log.warn("IllegalStateException: {}", e.toString());
             }
             oldScore = newScore;
             // Force a stop if we have overflow or underflow.

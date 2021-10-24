@@ -101,6 +101,10 @@ public class App
                 runObject = new AnovaProcessor();
                 success = execute(runObject, args);
                 break;
+            case "meanBias" :
+            	runObject = new MeanBiasProcessor();
+            	success = execute(runObject, args);
+            	break;
             case "pearson" :
                 runObject = new PearsonProcessor();
                 success = execute(runObject, args);

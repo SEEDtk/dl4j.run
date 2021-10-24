@@ -9,7 +9,6 @@ import java.util.TreeSet;
 import java.util.stream.IntStream;
 
 import org.apache.commons.math3.stat.regression.SimpleRegression;
-import org.kohsuke.args4j.Argument;
 import org.theseed.dl4j.train.TrainingAnalysisProcessor;
 import org.theseed.io.TabbedLineReader;
 
@@ -30,13 +29,7 @@ import org.theseed.io.TabbedLineReader;
  */
 public class PearsonProcessor extends TrainingAnalysisProcessor {
 
-    // COMMAND-LINE OPTIONS
-
-    /** output column name */
-    @Argument(index = 1, metaVar = "outCol", usage = "output column name")
-    private String outCol;
-
-    /**
+     /**
      * This class is used to store the correlation value for each input column.  It is
      * sorted by highest absolute correlation value, then column name.
      */

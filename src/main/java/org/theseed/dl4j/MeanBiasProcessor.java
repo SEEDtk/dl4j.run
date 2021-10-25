@@ -57,7 +57,6 @@ public class MeanBiasProcessor extends BaseReportProcessor {
 	// FIELDS
 	/** logging facility */
 	protected static Logger log = LoggerFactory.getLogger(MeanBiasProcessor.class);
-
 	/** metadata column names */
 	private String metaHeaders;
 	/** default metadata value */
@@ -86,7 +85,48 @@ public class MeanBiasProcessor extends BaseReportProcessor {
 	/** model directory name */
 	@Argument(index = 0, metaVar = "modelDir", usage = "model input directory")
 	private File modelDir;
+	
+	/**
+	 * Run a mean-bias analysis for a specified training file in a specified model directory.
+	 * 
+	 * @param modelDir		input model directory
+	 * @param trainFile		training file to use
+	 * 
+	 * @throws ParseFailureException
+	 * @throws IOException 
+	 */
+	public void analyzeLabelBias(File modelDir, File trainFile) throws IOException, ParseFailureException {
+		this.trainFile = trainFile;
+		this.modelDir = modelDir;
+		// Denote we have no metadata file.
+		this.clearMetaFileData();
+		// Read in the model directory specifications.
+		this.processModelDir();
+		// Fill in the summary statistics for each label.
+		this.computeBias();
+	}
+	
+	/**
+	 * @return the ordered list of labels.
+	 */
+	public String[] getLabels() {
+		return this.labels;
+	}
 
+	/**
+	 * @return the mean for each label in each column
+	 */
+	public Map<String, double[]> getMeans() {
+		Map<String, double[]> retVal = new TreeMap<String, double[]>();
+		for (Map.Entry<String, SummaryStatistics[]> meanEntry : this.meanMap.entrySet()) {
+			String colName = meanEntry.getKey();
+			double[] means = Arrays.stream(meanEntry.getValue()).mapToDouble(x -> x.getMean())
+					.toArray();
+			retVal.put(colName, means);
+		}
+		return retVal;
+	}
+	
 	@Override
 	protected void setReporterDefaults() {
 		this.metaFile = null;
@@ -96,9 +136,7 @@ public class MeanBiasProcessor extends BaseReportProcessor {
 	protected void validateReporterParms() throws IOException, ParseFailureException {
 		// Validate the metadata file.
 		if (this.metaFile == null) {
-			this.metaHeaders = "";
-			this.metaDefault = "";
-			this.metaValues = Collections.emptyMap();
+			clearMetaFileData();
 		} else if (! this.metaFile.canRead())
 			throw new FileNotFoundException("Metadata file " + this.metaFile + " is not found or unreadable.");
 		else {
@@ -127,10 +165,31 @@ public class MeanBiasProcessor extends BaseReportProcessor {
 				log.info("{} metadata strings read from {}.", this.metaValues.size(), this.metaFile);
 			}
 		}
+		// Get the training file.
+		this.trainFile = new File(this.modelDir, "training.tbl");
+		// Get all the data from the model directory.
+		this.processModelDir();
+	}
+
+	/**
+	 * Denote we have no metadata file.
+	 */
+	protected void clearMetaFileData() {
+		this.metaHeaders = "";
+		this.metaDefault = "";
+		this.metaValues = Collections.emptyMap();
+	}
+
+	/**
+	 * Extract all the data we need from the model directory.
+	 * 
+	 * @throws IOException
+	 * @throws ParseFailureException
+	 */
+	protected void processModelDir() throws FileNotFoundException, IOException, ParseFailureException {
 		// Check the model directory.
 		File labelFile = new File(this.modelDir, "labels.txt");
 		File parmFile = new File(this.modelDir, "parms.prm");
-		this.trainFile = new File(this.modelDir, "training.tbl");
 		if (! labelFile.exists() || ! this.trainFile.exists() || ! parmFile.exists())
 			throw new FileNotFoundException(this.modelDir + " does not look like a model directory.");
 		if (! this.trainFile.canRead())
@@ -154,6 +213,37 @@ public class MeanBiasProcessor extends BaseReportProcessor {
 
 	@Override
 	protected void runReporter(PrintWriter writer) throws Exception {
+		// Determine the bias for each input column.
+		this.computeBias();
+		// Now we produce the output.
+		writeReport(writer);
+	}
+
+	/**
+	 * Write the output report.
+	 * 
+	 * @param writer	PrintWriter to receive the output
+	 */
+	public void writeReport(PrintWriter writer) {
+		log.info("Writing output.");
+		// Form the headers.
+		writer.format("column_name%s\t%s%n", this.metaHeaders, StringUtils.join(this.labels, "\t"));
+		// Output each column.
+		for (Map.Entry<String, SummaryStatistics[]> entry : this.meanMap.entrySet()) {
+			String colName = entry.getKey();
+			String metaData = this.metaValues.getOrDefault(colName, metaDefault);
+			String stats = Arrays.stream(entry.getValue()).map(x -> String.format("%6.4f", x.getMean()))
+					.collect(Collectors.joining("\t"));
+			writer.format("%s%s\t%s%n", colName, metaData, stats);
+		}
+	}
+
+	/**
+	 * Compute the bias for each input column and build the summary statistics.
+	 * 
+	 * @throws IOException
+	 */
+	protected void computeBias() throws IOException {
 		// Start reading the training file.
 		log.info("Reading {}.", this.trainFile);
 		try (TabbedLineReader trainStream = new TabbedLineReader(this.trainFile)) {
@@ -198,18 +288,6 @@ public class MeanBiasProcessor extends BaseReportProcessor {
 				}
 			}
 			log.info("{} rows read, {} values processed.", rowCount, valCount);
-		}
-		// Now we produce the output.
-		log.info("Writing output.");
-		// Form the headers.
-		writer.format("column_name%s\t%s%n", metaHeaders, StringUtils.join(this.labels, "\t"));
-		// Output each column.
-		for (Map.Entry<String, SummaryStatistics[]> entry : this.meanMap.entrySet()) {
-			String colName = entry.getKey();
-			String metaData = this.metaValues.getOrDefault(colName, metaDefault);
-			String stats = Arrays.stream(entry.getValue()).map(x -> String.format("%6.4f", x.getMean()))
-					.collect(Collectors.joining("\t"));
-			writer.format("%s%s\t%s%n", colName, metaData, stats);
 		}
 	}
 

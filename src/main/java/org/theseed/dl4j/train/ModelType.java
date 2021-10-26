@@ -3,6 +3,13 @@
  */
 package org.theseed.dl4j.train;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.List;
+
+import org.theseed.dl4j.decision.RandomForest;
+import org.theseed.dl4j.predict.PredictionProcessor;
+import org.theseed.io.LineReader;
 import org.theseed.utils.IDescribable;
 
 /**
@@ -43,6 +50,10 @@ public enum ModelType implements IDescribable {
         public int metaLabel() {
             return 0;
         }
+		@Override
+		public void predict(File modelDir, File inFile, File outFile, List<String> metaCols) throws IOException {
+			PredictionProcessor.makePredictions(modelDir, true, inFile, outFile, metaCols);
+		}
     }, CLASS {
         @Override
         public Enum<?>[] getPreferTypes() {
@@ -64,6 +75,10 @@ public enum ModelType implements IDescribable {
         public int metaLabel() {
             return 1;
         }
+		@Override
+		public void predict(File modelDir, File inFile, File outFile, List<String> metaCols) throws IOException {
+			PredictionProcessor.makePredictions(modelDir, false, inFile, outFile, metaCols);
+		}
     }, DECISION {
 
         @Override
@@ -91,6 +106,13 @@ public enum ModelType implements IDescribable {
             return 1;
         }
 
+		@Override
+		public void predict(File modelDir, File inFile, File outFile, List<String> metaCols) throws IOException {
+			RandomForest model = RandomForest.load(new File(modelDir, "model.ser"));
+			List<String> labels = LineReader.readList(new File(modelDir, "labels.txt"));
+			model.makePredictions(inFile, outFile, metaCols, labels);
+		}
+        
     };
 
     /**
@@ -112,6 +134,19 @@ public enum ModelType implements IDescribable {
      * @return 1 if this model type has a classification label column, else 0
      */
     public abstract int metaLabel();
+
+    /**
+     * Make predictions using a model of this type.
+     * 
+     * @param modelDir		model directory
+     * @param inFile		input file
+     * @param outFile		output file for the predictions
+     * @param metaCols		list of metadata columns in the input
+     * 
+     * @throws IOException
+     */
+    public abstract void predict(File modelDir, File inFile, File outFile, List<String> metaCols)
+    		throws IOException;
 
     /**
      * @return a training processor of the specified type

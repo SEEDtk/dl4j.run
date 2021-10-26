@@ -6,6 +6,7 @@ package org.theseed.dl4j.predict;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +49,8 @@ import org.theseed.utils.ICommand;
  * The command-line options are as follows.
  *
  * -i	the name of the input file of predictions; the default is the standard input
- * -o	heading to put on the result column; the default is "predicted"
+ * -c	heading to put on the result column; the default is "predicted"
+ * -o 	output file (if not STDOUT)
  *
  * --meta			a comma-delimited list of the metadata columns; these columns are ignored during training; the
  * 					default is none
@@ -63,13 +65,15 @@ public class PredictionProcessor implements ICommand {
 
     // FIELDS
     /** list of metadata column labels */
-    List<String> metaList;
+    private List<String> metaList;
     /** array of labels */
-    List<String> labels;
+    private List<String> labels;
     /** input dataset reader */
-    TabbedDataSetReader reader;
+    private TabbedDataSetReader reader;
     /** model to use for predictions */
-    MultiLayerNetwork model;
+    private MultiLayerNetwork model;
+    /** output print writer */
+    private PrintStream writer;
 
     /** logging facility */
     private static Logger log = LoggerFactory.getLogger(PredictionProcessor.class);
@@ -90,7 +94,7 @@ public class PredictionProcessor implements ICommand {
     private String metaCols;
 
     /** heading to put on the result column */
-    @Option(name="-o", aliases={"--result", "--header"}, metaVar="Result", usage="heading to put on result column")
+    @Option(name="-c", aliases={"--result", "--header"}, metaVar="Result", usage="heading to put on result column")
     private String outColumn;
 
     /** model file name */
@@ -100,12 +104,35 @@ public class PredictionProcessor implements ICommand {
     /** output all confidences instead of output values */
     @Option(name="--regression", aliases={"-r"}, usage="output in regression mode rather than classification mode")
     private boolean confOutput;
+    
+    /** output file (if not STDOUT) */
+    @Option(name="--output", aliases={"-o"}, usage="output file name (if not STDOUT)")
+    private File outFile;
 
    /** model directory */
     @Argument(index=0, metaVar="modelDir", usage="model directory", required=true)
     private File modelDir;
 
-
+    public static void makePredictions(File modelDir, boolean regression, File inFile, File outFile, 
+    		List<String> metaList) throws IOException {
+    	// Create the prediction processor and set up the parameters.
+    	PredictionProcessor processor = new PredictionProcessor();
+    	processor.modelDir = modelDir;
+    	processor.inputFile = inFile;
+    	processor.metaList = metaList;
+    	processor.outColumn = "predicted";
+    	processor.modelName = null;
+    	processor.outFile = outFile;
+    	processor.confOutput = regression;
+    	// Open the output file.
+    	processor.writer = new PrintStream(outFile);
+    	// Initialize the prediction data.
+    	processor.setupPredictionData();
+    	// Produce the predictions.
+    	processor.run();
+    }
+    
+    
 
     @Override
     public boolean parseCommand(String[] args) {
@@ -116,6 +143,7 @@ public class PredictionProcessor implements ICommand {
         this.metaCols = "";
         this.outColumn = "predicted";
         this.modelName = null;
+        this.outFile = null;
         // Parse the command line.
         CmdLineParser parser = new CmdLineParser(this);
         try {
@@ -127,48 +155,20 @@ public class PredictionProcessor implements ICommand {
                 if (! this.modelDir.isDirectory()) {
                     throw new FileNotFoundException("Model directory " + this.modelDir + " not found or invalid.");
                 } else {
-                    // Read in the labels from the label file.
-                    File labelFile = new File(this.modelDir, "labels.txt");
-                    if (! labelFile.exists()) {
-                        throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
+                    // Parse the metadata column list.
+                    this.metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
+                    // Set up the output print writer.
+                    if (this.outFile == null) {
+                    	log.info("Predictions will be written to the standard output.");
+                    	this.writer = System.out;
                     } else {
-                        this.labels = TabbedDataSetReader.readLabels(labelFile);
-                        log.info("{} labels read from label file.", this.labels.size());
-                        // Parse the metadata column list.
-                        this.metaList = Arrays.asList(StringUtils.split(this.metaCols, ','));
-                        // Read in the model and the normalizer.
-                        if (this.modelName == null)
-                            this.modelName = new File(this.modelDir, "model.ser");
-                        this.model = ModelSerializer.restoreMultiLayerNetwork(this.modelName, false);
-                        DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(this.modelName);
-                        log.info("Model read from {}.", this.modelName);
-                        // Determine the input type and get the appropriate reader.
-                        File channelFile = new File(this.modelDir, "channels.tbl");
-                        if (! channelFile.exists()) {
-                            log.info("Normal input.");
-                            // Normal situation.  Read scalar values.
-                            this.reader = new TabbedDataSetReader(this.inputFile, metaList);
-                        } else {
-                            log.info("Channel input.");
-                            // Here we have channel input.
-                            Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
-                            this.reader = new ChannelDataSetReader(this.inputFile, metaList, channelMap);
-                        }
-                        this.reader.setNormalizer(normalizer);
-                        // Write the output headers.  Note that if there is only one output column, we use the
-                        // supplied name.
-                        String metaHeader = StringUtils.join(this.metaList, '\t');
-                        String confColumns;
-                        if (! this.confOutput)
-                            confColumns = this.outColumn + "\tconfidence";
-                        else if (this.labels.size() == 1)
-                            confColumns = this.outColumn;
-                        else
-                            confColumns = StringUtils.join(this.labels, '\t');
-                        System.out.format("%s\t%s%n", metaHeader, confColumns);
-                        // Denote we're ready.
-                        retVal = true;
+                    	log.info("Predictions will be written to {}.", this.outFile);
+                    	this.writer = new PrintStream(this.outFile);
                     }
+                    // Read in the labels from the label file and set up the input stream.
+                    setupPredictionData();
+                    // Denote we're ready.
+                    retVal = true;
                 }
             }
         } catch (IOException e) {
@@ -179,50 +179,100 @@ public class PredictionProcessor implements ICommand {
         return retVal;
     }
 
+	/**
+	 * Read the labels from the label file and set up the input.
+	 * 
+	 * @throws IOException
+	 */
+	protected void setupPredictionData() throws IOException {
+		File labelFile = new File(this.modelDir, "labels.txt");
+		if (! labelFile.exists()) {
+		    throw new FileNotFoundException("Label file not found in " + this.modelDir + ".");
+		} else {
+		    this.labels = TabbedDataSetReader.readLabels(labelFile);
+		    log.info("{} labels read from label file.", this.labels.size());
+		    // Read in the model and the normalizer.
+		    if (this.modelName == null)
+		        this.modelName = new File(this.modelDir, "model.ser");
+		    this.model = ModelSerializer.restoreMultiLayerNetwork(this.modelName, false);
+		    DataNormalization normalizer = ModelSerializer.restoreNormalizerFromFile(this.modelName);
+		    log.info("Model read from {}.", this.modelName);
+		    // Determine the input type and get the appropriate reader.
+		    File channelFile = new File(this.modelDir, "channels.tbl");
+		    if (! channelFile.exists()) {
+		        log.info("Normal input.");
+		        // Normal situation.  Read scalar values.
+		        this.reader = new TabbedDataSetReader(this.inputFile, metaList);
+		    } else {
+		        log.info("Channel input.");
+		        // Here we have channel input.
+		        Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
+		        this.reader = new ChannelDataSetReader(this.inputFile, metaList, channelMap);
+		    }
+		    this.reader.setNormalizer(normalizer);
+		    // Write the output headers.  Note that if there is only one output column, we use the
+		    // supplied name.
+		    String metaHeader = StringUtils.join(this.metaList, '\t');
+		    String confColumns;
+		    if (! this.confOutput)
+		        confColumns = this.outColumn + "\tconfidence";
+		    else if (this.labels.size() == 1)
+		        confColumns = this.outColumn;
+		    else
+		        confColumns = StringUtils.join(this.labels, '\t');
+		    this.writer.format("%s\t%s%n", metaHeader, confColumns);
+		}
+	}
+
     @Override
     public void run() {
-        // Loop through the data batches.
-        long start = System.currentTimeMillis();
-        int rows = 0;
-        for (DataSet batch : this.reader) {
-            // Get the features and the associated metadata.
-            INDArray features = batch.getFeatures();
-            List<String> metaData = batch.getExampleMetaData(String.class);
-            // Compute the predictions for this model.
-            INDArray output = model.output(features);
-            // Loop through the output and the metadata in parallel.
-            int i = 0;
-            for (String metaDatum : metaData) {
-                // We have the metadata for this row.  Find the output.
-                if (this.confOutput) {
-                    // Here we need to output the confidences column by column.
-                    // Start with the metadata.
-                    System.out.print(metaDatum);
-                    // Loop through the labels.
-                    for (int j = 0; j < this.labels.size(); j++)
-                        System.out.format("\t%12.8g", output.getDouble(i, j));
-                    // Terminate the line.
-                    System.out.println();
-                } else {
-                    // Here we need to find the best label and its confidence.
-                    int n = this.labels.size();
-                    int jBest = 0;
-                    double vBest = output.getDouble(i, 0);
-                    for (int j = 1; j < n; j++) {
-                        double v = output.getDouble(i, j);
-                        if (v > vBest) {
-                            vBest = v;
-                            jBest = j;
-                        }
-                    }
-                    String prediction = this.labels.get(jBest);
-                    System.out.format("%s\t%s\t%12.8g%n", metaDatum, prediction, vBest);
-                }
-                // Advance the row index and count.
-                i++;
-                rows++;
-            }
-        }
-        log.info("{} data rows processed in {} seconds.", rows, (System.currentTimeMillis() - start) / 1000);
+    	try {
+	        // Loop through the data batches.
+	        long start = System.currentTimeMillis();
+	        int rows = 0;
+	        for (DataSet batch : this.reader) {
+	            // Get the features and the associated metadata.
+	            INDArray features = batch.getFeatures();
+	            List<String> metaData = batch.getExampleMetaData(String.class);
+	            // Compute the predictions for this model.
+	            INDArray output = model.output(features);
+	            // Loop through the output and the metadata in parallel.
+	            int i = 0;
+	            for (String metaDatum : metaData) {
+	                // We have the metadata for this row.  Find the output.
+	                if (this.confOutput) {
+	                    // Here we need to output the confidences column by column.
+	                    // Start with the metadata.
+	                    this.writer.print(metaDatum);
+	                    // Loop through the labels.
+	                    for (int j = 0; j < this.labels.size(); j++)
+	                        this.writer.format("\t%12.8g", output.getDouble(i, j));
+	                    // Terminate the line.
+	                    this.writer.println();
+	                } else {
+	                    // Here we need to find the best label and its confidence.
+	                    int n = this.labels.size();
+	                    int jBest = 0;
+	                    double vBest = output.getDouble(i, 0);
+	                    for (int j = 1; j < n; j++) {
+	                        double v = output.getDouble(i, j);
+	                        if (v > vBest) {
+	                            vBest = v;
+	                            jBest = j;
+	                        }
+	                    }
+	                    String prediction = this.labels.get(jBest);
+	                    this.writer.format("%s\t%s\t%12.8g%n", metaDatum, prediction, vBest);
+	                }
+	                // Advance the row index and count.
+	                i++;
+	                rows++;
+	            }
+	        }
+	        log.info("{} data rows processed in {} seconds.", rows, (System.currentTimeMillis() - start) / 1000);
+    	} finally {
+    		// Insure we close the output stream.
+    		this.writer.close();
+    	}
     }
 }

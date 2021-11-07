@@ -12,7 +12,7 @@ import org.deeplearning4j.nn.workspace.ArrayType;
 import org.deeplearning4j.nn.workspace.LayerWorkspaceMgr;
 import org.deeplearning4j.util.TimeSeriesUtils;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.primitives.Pair;
+import org.nd4j.common.primitives.Pair;
 import org.nd4j.linalg.api.shape.Shape;
 
 /**

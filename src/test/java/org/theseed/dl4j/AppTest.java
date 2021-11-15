@@ -1,12 +1,10 @@
 package org.theseed.dl4j;
 
-import junit.framework.Test;
-
-import junit.framework.TestCase;
-import junit.framework.TestSuite;
-
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static org.theseed.test.Matchers.*;
+
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,26 +33,8 @@ import org.theseed.dl4j.train.LayerWidths;
 /**
  * Unit test for simple App.
  */
-public class AppTest extends TestCase
+public class AppTest
 {
-    /**
-     * Create the test case
-     *
-     * @param testName name of the test case
-     */
-    public AppTest( String testName )
-    {
-        super( testName );
-    }
-
-    /**
-     * @return the suite of tests being tested
-     */
-    public static Test suite()
-    {
-        return new TestSuite( AppTest.class );
-    }
-
     // Convert double[] to List<Double>
     public List<Double> collect(double[] parm) {
         return Arrays.stream(parm).boxed().collect(Collectors.toList());
@@ -64,12 +44,13 @@ public class AppTest extends TestCase
      * Test the training set reader.
      * @throws IOException
      */
+    @Test
     public void testReader() throws IOException {
         File inFile = new File("src/test/data", "iris.tbl");
         List<String> labels = Arrays.asList("setosa", "versicolor", "virginica");
         TabbedDataSetReader reader = new TabbedDataSetReader(inFile, "species", labels)
                 .setBatchSize(11);
-        assertTrue("End of file too soon.", reader.hasNext());
+        assertThat("End of file too soon.", reader.hasNext(), isTrue());
         assertThat("Wrong input width in file.", reader.getWidth(), equalTo(4));
         DataSet set1 = reader.next();
         assertThat("Wrong number of classes.", set1.numOutcomes(), equalTo(3));
@@ -165,6 +146,7 @@ public class AppTest extends TestCase
      * Test the channel dataset reader.
      * @throws IOException
      */
+    @Test
     public void testChannelReader() throws IOException {
         File channelFile = new File("src/test/data", "channels.tbl");
         Map<String, double[]> channelMap = ChannelDataSetReader.readChannelFile(channelFile);
@@ -221,6 +203,7 @@ public class AppTest extends TestCase
     /**
      * Test the layer widths computer
      */
+    @Test
     public void testLayerWidths() {
         LayerWidths widthComputer = new LayerWidths(50, 4);
         assertThat(widthComputer.getInWidth(), equalTo(50));

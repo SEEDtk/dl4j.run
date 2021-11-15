@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.SortedSet;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.theseed.counters.Rating;
 import org.theseed.utils.ParseFailureException;
 

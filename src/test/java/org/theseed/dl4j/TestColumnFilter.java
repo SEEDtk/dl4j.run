@@ -9,7 +9,7 @@ import static org.theseed.test.Matchers.*;
 import java.util.Arrays;
 import java.util.List;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * @author Bruce Parrello

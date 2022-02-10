@@ -4,7 +4,7 @@
 package org.theseed.dl4j;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.theseed.test.Matchers.*;
+import static org.hamcrest.Matchers.*;
 
 import java.util.Arrays;
 import java.util.List;
@@ -24,20 +24,20 @@ public class TestColumnFilter {
         List<String> labelCols = Arrays.asList("zz");
         BalanceColumnFilter filter = new BalanceColumnFilter.All();
         for (String colName : colNames)
-            assertThat(colName, filter.allows(colName), isTrue());
+            assertThat(colName, filter.allows(colName), equalTo(true));
         List<String> fieldNames = Arrays.asList("z0", "a1", "b2", "c3", "d4", "e5");
         filter = new SubsetColumnFilter(fieldNames, 7, metaCols, labelCols);
         for (String colName : colNames)
-            assertThat(colName, filter.allows(colName), isTrue());
+            assertThat(colName, filter.allows(colName), equalTo(true));
         filter = new SubsetColumnFilter(fieldNames, 3, metaCols, labelCols);
-        assertThat(filter.allows("a1"), isTrue());
-        assertThat(filter.allows("b2"), isTrue());
-        assertThat(filter.allows("xx"), isTrue());
-        assertThat(filter.allows("yy"), isTrue());
-        assertThat(filter.allows("zz"), isTrue());
-        assertThat(filter.allows("c3"), isFalse());
-        assertThat(filter.allows("d4"), isFalse());
-        assertThat(filter.allows("e5"), isFalse());
+        assertThat(filter.allows("a1"), equalTo(true));
+        assertThat(filter.allows("b2"), equalTo(true));
+        assertThat(filter.allows("xx"), equalTo(true));
+        assertThat(filter.allows("yy"), equalTo(true));
+        assertThat(filter.allows("zz"), equalTo(true));
+        assertThat(filter.allows("c3"), equalTo(false));
+        assertThat(filter.allows("d4"), equalTo(false));
+        assertThat(filter.allows("e5"), equalTo(false));
     }
 
 }

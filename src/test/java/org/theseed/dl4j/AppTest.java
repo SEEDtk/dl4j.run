@@ -2,8 +2,6 @@ package org.theseed.dl4j;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.theseed.test.Matchers.*;
-
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -50,7 +48,7 @@ public class AppTest
         List<String> labels = Arrays.asList("setosa", "versicolor", "virginica");
         TabbedDataSetReader reader = new TabbedDataSetReader(inFile, "species", labels)
                 .setBatchSize(11);
-        assertThat("End of file too soon.", reader.hasNext(), isTrue());
+        assertThat("End of file too soon.", reader.hasNext(), equalTo(true));
         assertThat("Wrong input width in file.", reader.getWidth(), equalTo(4));
         DataSet set1 = reader.next();
         assertThat("Wrong number of classes.", set1.numOutcomes(), equalTo(3));

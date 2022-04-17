@@ -31,18 +31,20 @@ public class TestSplitFinders {
         SplitPointFinder finder = new SplitPointFinder.Mean();
         File partFile = new File("src/test/data", "partial_iris.tbl");
         List<String> outcomes = Arrays.asList("virginica", "versicolor", "setosa");
-        TabbedDataSetReader reader = new TabbedDataSetReader(partFile, "species", outcomes, Collections.emptyList());
-        reader.setBatchSize(200);
-        DataSet readSet = reader.next();
-        INDArray features = readSet.getFeatures();
-        readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
-        double oldEntropy = DecisionTree.entropy(readSet);
-        List<DataSet> rows = readSet.asList();
-        for (int i = 0; i < 3; i++) {
-            Splitter meanSplitter = finder.computeSplit(i, 3, rows, oldEntropy);
-            finder = new SequentialSplitPointFinder();
-            Splitter bestSplitter = finder.computeSplit(i, 3, rows, oldEntropy);
-            assertThat(bestSplitter.compareTo(meanSplitter), lessThanOrEqualTo(0));
+        try (TabbedDataSetReader reader = new TabbedDataSetReader(partFile, "species", outcomes,
+                Collections.emptyList())) {
+            reader.setBatchSize(200);
+            DataSet readSet = reader.next();
+            INDArray features = readSet.getFeatures();
+            readSet.setFeatures(features.reshape(features.size(0), features.size(3)));
+            double oldEntropy = DecisionTree.entropy(readSet);
+            List<DataSet> rows = readSet.asList();
+            for (int i = 0; i < 3; i++) {
+                Splitter meanSplitter = finder.computeSplit(i, 3, rows, oldEntropy);
+                finder = new SequentialSplitPointFinder();
+                Splitter bestSplitter = finder.computeSplit(i, 3, rows, oldEntropy);
+                assertThat(bestSplitter.compareTo(meanSplitter), lessThanOrEqualTo(0));
+            }
         }
     }
 

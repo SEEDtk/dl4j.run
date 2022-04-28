@@ -29,7 +29,7 @@ import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
 import org.theseed.dl4j.train.LayerWidths;
 
 /**
- * Unit test for simple App.
+ * Simple tests
  */
 public class AppTest
 {

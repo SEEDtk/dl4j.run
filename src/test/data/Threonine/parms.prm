@@ -1,0 +1,43 @@
+--activation RELU	# hidden layer activation function
+--bUpdater NESTEROVS	# bias gradient updater method (uses update rate)
+--balanced 7	# number of hidden layers (overrides widths)
+--batch 	# use a batch normalization layer
+--batchSize 500	# size of each training batch
+--bound 1.0	# threshold for pseudo-accuracy
+# --cnn 3	# convolution kernel sizes
+# --comment The comment appears in the trial log.
+--earlyStop 200	# early-stop useless-iteration limit
+# --filters 1	# number of convolution filters to try
+## Valid gradient normalizations are None, RenormalizeL2PerLayer, RenormalizeL2PerParamType, ClipElementWiseAbsoluteValue, ClipL2PerLayer, ClipL2PerParamType.
+--gradNorm None	# gradient normalization strategy
+--id sample_id	# ID column for validation reports
+## Valid activation functions are CUBE, ELU, HARDSIGMOID, HARDTANH, IDENTITY, LEAKYRELU, RATIONALTANH, RELU, RELU6, RRELU, SIGMOID, SOFTMAX, SOFTPLUS, SOFTSIGN, TANH, RECTIFIEDTANH, SELU, SWISH, THRESHOLDEDRELU, GELU.
+--init SOFTMAX	# initial activation function
+# --input training.tbl	# training file name
+--iter 1000	# number of training iterations per batch
+--learnRate 1.000000e-03	# weight learning rate
+## Valid loss functions are XENT, COSINE_PROXIMITY, FMEASURE, HINGE, KLD, L1, L2, MAE, MAPE, MCXENT, MSE, MSLE, POISSON, SQUARED_HINGE.
+--lossFun L2	# loss function for scoring output
+# --lstm 0	# number of long-short-term time series layers
+# --maxBatches 10	# limit the number of input batches
+--meta sample_id,density	# comma-delimited list of meta-data columns
+## Valid training methods are BATCH, EPOCH.
+--method EPOCH	# training set processing method
+# --name model.ser	# model file name
+## Valid optimization preferences are SCORE, RSQUARED, PEARSON, ACCURACY, BOUNDED, MAE, MSE.
+--prefer MAE	# optimization preference
+# --raw 	# suppress input normalization
+--regFactor 0.300000	# regularization coefficient/factor
+## Valid regularization modes are GAUSS, LINEAR, L2, WEIGHT_DECAY, NONE.
+--regMode NONE	# regularization mode
+--seed 819936	# random number initialization seed
+## Valid starting weight initializations are DISTRIBUTION, ZERO, ONES, SIGMOID_UNIFORM, NORMAL, LECUN_NORMAL, UNIFORM, XAVIER, XAVIER_UNIFORM, XAVIER_FAN_IN, XAVIER_LEGACY, RELU, RELU_UNIFORM, IDENTITY, LECUN_UNIFORM, VAR_SCALING_NORMAL_FAN_IN, VAR_SCALING_NORMAL_FAN_OUT, VAR_SCALING_NORMAL_FAN_AVG, VAR_SCALING_UNIFORM_FAN_IN, VAR_SCALING_UNIFORM_FAN_OUT, VAR_SCALING_UNIFORM_FAN_AVG.
+--start XAVIER	# starting weight initialization method
+# --strides 1	# stride to use for convolution layer
+# --sub 1	# subsampling factor
+--testSize 279	# size of the testing set, taken from the beginning of the file
+--updateRate 0.200000	# bias update coefficient
+## Valid updater methods are ADAM, AMSGRAD, NADAM, NESTEROVS, RMSPROP, SGD.
+--updater ADAM	# weight gradient updater method (uses learning rate)
+# --weights 1.0	# weights (by label) for computing loss function
+# --widths 10	# configure number and widths of hidden layers

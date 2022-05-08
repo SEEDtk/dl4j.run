@@ -102,9 +102,9 @@ public class App
                 success = execute(runObject, args);
                 break;
             case "meanBias" :
-            	runObject = new MeanBiasProcessor();
-            	success = execute(runObject, args);
-            	break;
+                runObject = new MeanBiasProcessor();
+                success = execute(runObject, args);
+                break;
             case "pearson" :
                 runObject = new PearsonProcessor();
                 success = execute(runObject, args);
@@ -115,6 +115,10 @@ public class App
                 break;
             case "roc" :
                 runObject = new RocProcessor();
+                success = execute(runObject, args);
+                break;
+            case "sortCheck" :
+                runObject = new SortCheckProcessor();
                 success = execute(runObject, args);
                 break;
             case "--help" :

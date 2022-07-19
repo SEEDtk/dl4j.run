@@ -121,6 +121,10 @@ public class App
                 runObject = new SortCheckProcessor();
                 success = execute(runObject, args);
                 break;
+            case "accuracy" :
+                runObject = new AccuracyProcessor();
+                success = execute(runObject, args);
+                break;
             case "--help" :
             case "-h" :
             case "help" :

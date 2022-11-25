@@ -20,8 +20,8 @@ import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.counters.Shuffler;
 import org.theseed.dl4j.train.Trainer.Type;
-import org.theseed.io.Shuffler;
 import org.theseed.reports.IValidationReport;
 
 public class LearningProcessor extends ModelProcessor {

@@ -13,6 +13,7 @@ import java.util.Iterator;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
+import org.theseed.counters.CountMap;
 import org.theseed.counters.QualityCountMap;
 import org.theseed.dl4j.train.ClassTrainingProcessor;
 import org.theseed.dl4j.train.RegressionTrainingProcessor;
@@ -72,6 +73,47 @@ public class TestDistributedOutput {
                 for (String loc : counters.allKeys())
                     assertThat("Key " + loc, Math.abs(counters.good(loc) - counters.bad(loc)), lessThan(2));
             }
+        }
+    }
+
+    @Test
+    public void testBalanced() throws IOException {
+        String[] headers;
+        String headLine;
+        try (LineReader headReader = new LineReader(new File("src/test/data", "headers.tbl"))) {
+            String line = headReader.next();
+            headers = StringUtils.split(line, '\t');
+            headLine = line;
+        }
+        File outFile = new File("src/test/data", "data.ser");
+        Map<String, String> inIDs = new HashMap<String, String>(350);
+        try (LineReader dataReader = new LineReader(new File("src/test/data", "raw.data"))) {
+            DistributedOutputStream outStream = DistributedOutputStream.create(outFile, new ClassTrainingProcessor(), "loc", headers);
+            outStream.setBalanced(true);
+            for (String line : dataReader) {
+                String[] items = StringUtils.split(line, ',');
+                inIDs.put(items[0], StringUtils.replaceChars(line, ',', '\t'));
+                outStream.write(items);
+            }
+            outStream.close();
+        }
+        CountMap<String> counters = new CountMap<String>();
+        try (LineReader dataReader = new LineReader(outFile)) {
+            Iterator<String> iter = dataReader.iterator();
+            String header = iter.next();
+            assertThat(header, equalTo(headLine));
+            String loc = "";
+            while (iter.hasNext()) {
+                String line = iter.next();
+                String key = StringUtils.substringBefore(line, "\t");
+                assertThat(inIDs.get(key), equalTo(line));
+                loc = StringUtils.substringAfterLast(line, "\t");
+                counters.count(loc);
+            }
+            // Get the count of one class.  Insure all the others are the same.
+            int size = counters.getCount(loc);
+            for (var count : counters.counts())
+                assertThat(count.getKey(), count.getCount(), equalTo(size));
         }
     }
 

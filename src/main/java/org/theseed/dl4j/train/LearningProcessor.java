@@ -73,7 +73,7 @@ public class LearningProcessor extends ModelProcessor {
         this.comment = null;
         this.idCol = null;
         // Clear the rating value and the normalizer.
-        this.bestRating = 0.0;
+        this.setRating(0.0);
         this.normalizer = null;
     }
 
@@ -141,7 +141,7 @@ public class LearningProcessor extends ModelProcessor {
         INDArray expect = this.getTestingSet().getLabels();
         produceAccuracyReport(buffer, eval, output, expect);
         // Finally, save the accuracy in case SearchProcessor is running us.
-        this.bestRating = runStats.getBestRating();
+        this.setRating(runStats.getBestRating());
     }
 
     /**

@@ -89,7 +89,7 @@ public class TestDistributedOutput {
         Map<String, String> inIDs = new HashMap<String, String>(350);
         try (LineReader dataReader = new LineReader(new File("src/test/data", "raw.data"))) {
             DistributedOutputStream outStream = DistributedOutputStream.create(outFile, new ClassTrainingProcessor(), "loc", headers);
-            outStream.setBalanced(true);
+            outStream.setBalanced(1.0);
             for (String line : dataReader) {
                 String[] items = StringUtils.split(line, ',');
                 inIDs.put(items[0], StringUtils.replaceChars(line, ',', '\t'));

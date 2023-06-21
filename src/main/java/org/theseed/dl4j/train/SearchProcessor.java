@@ -202,6 +202,7 @@ public class SearchProcessor implements ICommand {
                 // Save the accuracy.
                 double newRating = processor.getRating();
                 values[varMap.size()] = String.format("%14.6g", newRating);
+                log.info("Rating for iteration {} is {}.", iteration, newRating);
                 // Compare the rating.
                 boolean save = this.saveAll;
                 if (newRating > bestRating) {

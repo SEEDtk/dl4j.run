@@ -61,7 +61,7 @@ public class TestDistributedOutput {
                     String key = StringUtils.substringBefore(line, "\t");
                     assertThat(inIDs.get(key), equalTo(line));
                     String loc = StringUtils.substringAfterLast(line, "\t");
-                    if (i > halfway)
+                    if (i >= halfway)
                         counters.setGood(loc);
                     else
                         counters.setBad(loc);

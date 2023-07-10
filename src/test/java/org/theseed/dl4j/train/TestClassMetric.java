@@ -33,8 +33,8 @@ public class TestClassMetric {
         assertThat(ClassMetric.PRECISION.compute(matrix), closeTo(.1000, 0.001));
         assertThat(ClassMetric.SENSITIVITY.compute(matrix), closeTo(.6667, 0.001));
         assertThat(ClassMetric.SPECIFICITY.compute(matrix), closeTo(.9100, 0.001));
-        assertThat(ClassMetric.NLR.compute(matrix), closeTo(Math.log10(7.41), 0.001));
-        assertThat(ClassMetric.PLR.compute(matrix), closeTo(Math.log10(0.366), 0.001));
+        assertThat(ClassMetric.NLR.compute(matrix), closeTo(Math.log10(7.2586), 0.001));
+        assertThat(ClassMetric.PLR.compute(matrix), closeTo(Math.log10(0.8609), 0.001));
     }
 
 

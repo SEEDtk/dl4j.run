@@ -23,13 +23,13 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ICommand;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.dl4j.App;
 import org.theseed.io.ParmDescriptor;
 import org.theseed.io.ParmFile;
 import org.theseed.reports.NullTrainReporter;
-import org.theseed.utils.ICommand;
 import org.theseed.utils.MultiParms;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * In search mode, we accept a parameter file that specifies multiple values for one or more

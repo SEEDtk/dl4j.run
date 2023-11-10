@@ -12,8 +12,8 @@ import java.io.PrintWriter;
 import java.util.SortedSet;
 
 import org.junit.jupiter.api.Test;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.counters.Rating;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * @author Bruce Parrello

@@ -7,6 +7,8 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
+import org.theseed.basic.ICommand;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.dl4j.predict.MultiRunProcessor;
 import org.theseed.dl4j.predict.PredictionProcessor;
 import org.theseed.dl4j.predict.ValidateProcessor;
@@ -18,9 +20,7 @@ import org.theseed.dl4j.train.SearchProcessor;
 import org.theseed.dl4j.train.TrainCheckProcessor;
 import org.theseed.dl4j.train.ClassTrainingProcessor;
 import org.theseed.dl4j.train.CrossValidateProcessor;
-import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * Main entry point for the Deep Learning utility.  The first parameter is a command-- use "train" to

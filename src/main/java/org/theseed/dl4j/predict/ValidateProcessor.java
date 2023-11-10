@@ -12,10 +12,10 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ICommand;
 import org.theseed.dl4j.train.ITrainingProcessor;
 import org.theseed.dl4j.train.ModelType;
 import org.theseed.reports.IValidationReport;
-import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
 
 /**

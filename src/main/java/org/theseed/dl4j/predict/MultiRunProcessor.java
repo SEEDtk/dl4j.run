@@ -22,11 +22,11 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ICommand;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.dl4j.ChannelDataSetReader;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.TabbedLineReader;
-import org.theseed.utils.ICommand;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This command runs multiple models against parallel input files.  In each file a single

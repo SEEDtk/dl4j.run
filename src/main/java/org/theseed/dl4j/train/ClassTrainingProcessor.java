@@ -18,6 +18,7 @@ import org.apache.commons.text.TextStringBuilder;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.kohsuke.args4j.Option;
 import org.nd4j.linalg.activations.Activation;
+import org.theseed.basic.ICommand;
 import org.theseed.dl4j.DistributedOutputStream;
 import org.theseed.dl4j.LossFunctionType;
 import org.theseed.dl4j.TabbedDataSetReader;
@@ -25,7 +26,6 @@ import org.theseed.reports.ClassTestValidationReport;
 import org.theseed.reports.ClassValidationReport;
 import org.theseed.reports.IValidationReport;
 import org.theseed.reports.TestValidationReport;
-import org.theseed.utils.ICommand;
 
 /**
  * This class reads a training set and creates and saves a multi-layered model.  It takes as

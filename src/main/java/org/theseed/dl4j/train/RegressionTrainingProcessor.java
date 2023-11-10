@@ -22,6 +22,7 @@ import org.kohsuke.args4j.Option;
 import org.nd4j.evaluation.regression.RegressionEvaluation;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.theseed.basic.ICommand;
 import org.theseed.counters.RegressionStatistics;
 import org.theseed.dl4j.DistributedOutputStream;
 import org.theseed.dl4j.LossFunctionType;
@@ -30,7 +31,6 @@ import org.theseed.reports.IValidationReport;
 import org.theseed.reports.RegressionTestValidationReport;
 import org.theseed.reports.RegressionValidationReport;
 import org.theseed.reports.TestValidationReport;
-import org.theseed.utils.ICommand;
 
 /**
  * This class reads a training set and creates and saves a multi-layered model.  It takes as

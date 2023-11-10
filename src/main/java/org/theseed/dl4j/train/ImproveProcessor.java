@@ -11,9 +11,9 @@ import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
+import org.theseed.basic.ICommand;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.reports.NullTrainReporter;
-import org.theseed.utils.ICommand;
 
 /**
  * This class loads a pre-trained classification model and improves it by applying a new training set.  Most of the code is

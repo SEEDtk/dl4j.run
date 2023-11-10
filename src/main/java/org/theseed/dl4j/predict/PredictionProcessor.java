@@ -23,9 +23,9 @@ import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ICommand;
 import org.theseed.dl4j.ChannelDataSetReader;
 import org.theseed.dl4j.TabbedDataSetReader;
-import org.theseed.utils.ICommand;
 
 /**
  * This method uses an existing model to make predictions.  It takes as input a tab-delimited file of feature

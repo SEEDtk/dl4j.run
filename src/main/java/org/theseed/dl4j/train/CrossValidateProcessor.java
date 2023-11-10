@@ -19,6 +19,8 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.theseed.basic.ICommand;
+import org.theseed.basic.ParseFailureException;
 import org.theseed.counters.RegressionStatistics;
 import org.theseed.counters.Shuffler;
 import org.theseed.dl4j.TabbedDataSetReader;
@@ -26,9 +28,7 @@ import org.theseed.io.LineReader;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.NullTrainReporter;
 import org.theseed.reports.TestValidationReport;
-import org.theseed.utils.ICommand;
 import org.theseed.utils.Parms;
-import org.theseed.utils.ParseFailureException;
 
 /**
  * This class performs cross-validation on a training set.  The set is divided into equal portions (folds)

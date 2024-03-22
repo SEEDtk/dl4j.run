@@ -14,10 +14,10 @@ import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
 import org.theseed.counters.CountMap;
-import org.theseed.counters.QualityCountMap;
 import org.theseed.dl4j.train.ClassTrainingProcessor;
 import org.theseed.dl4j.train.RegressionTrainingProcessor;
 import org.theseed.io.LineReader;
+import org.theseed.stats.QualityCountMap;
 
 /**
  * @author Bruce Parrello

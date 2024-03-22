@@ -17,8 +17,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.basic.BaseProcessor;
 import org.theseed.basic.ParseFailureException;
-import org.theseed.counters.Rating;
 import org.theseed.dl4j.train.RandomForestTrainProcessor;
+import org.theseed.stats.Rating;
 
 /**
  * This is a simple command that outputs an ANOVA F-measure report for a random forest trainer.

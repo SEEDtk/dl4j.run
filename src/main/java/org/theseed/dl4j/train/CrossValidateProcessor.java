@@ -21,13 +21,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.theseed.basic.ICommand;
 import org.theseed.basic.ParseFailureException;
-import org.theseed.counters.RegressionStatistics;
-import org.theseed.counters.Shuffler;
 import org.theseed.dl4j.TabbedDataSetReader;
 import org.theseed.io.LineReader;
 import org.theseed.io.TabbedLineReader;
 import org.theseed.reports.NullTrainReporter;
 import org.theseed.reports.TestValidationReport;
+import org.theseed.stats.RegressionStatistics;
+import org.theseed.stats.Shuffler;
 import org.theseed.utils.Parms;
 
 /**
